@@ -317,31 +317,26 @@ impl ActorState {
     /// Returns true if this actor can use the item in the specified quick slot
     /// now - which includes having sufficient AP, false otherwise
     pub fn can_use_quick(&self, slot: QuickSlot) -> bool {
-        match self.inventory.quick(slot) {
-            None => false,
-            Some(item) => self.can_use(item),
-        }
+        self.inventory
+            .quick(slot)
+            .map_or(false, |item| self.can_use(item))
     }
 
     /// Returns true if this actor can use the item at some point - not
     /// taking AP into consideration, false otherwise
     pub fn can_use_sometime(&self, item_state: &ItemState) -> bool {
-        if item_state.item.usable.is_none() {
-            return false;
-        }
-
-        if !item_state.item.meets_prereqs(&self.actor) {
-            return false;
-        }
-
-        true
+        item_state.item.usable.is_some() && item_state.item.meets_prereqs(&self.actor)
     }
 
     /// Returns true if the specified item can be used now - which includes
     /// having sufficient AP, false otherwise
     pub fn can_use(&self, item_state: &ItemState) -> bool {
-        item_state.item.meets_prereqs(&self.actor) &&
-            item_state.item.usable.map_or(false, |usable| self.p_stats.ap() >= usable.ap)
+        item_state.item.meets_prereqs(&self.actor)
+            && item_state
+                .item
+                .usable
+                .as_ref()
+                .map_or(false, |usable| self.p_stats.ap() >= usable.ap)
     }
 
     fn group_has_uses(&self, group_id: &str) -> bool {

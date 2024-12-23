@@ -485,13 +485,13 @@ pub fn get_audio_devices() -> Vec<AudioDeviceInfo> {
 }
 
 pub fn init_device(info: AudioDeviceInfo) -> Option<AudioDevice> {
-    match AudioDevice::new(info.device, info.name.to_string(), info.config) {
-        Err(_) => {
+    AudioDevice::new(info.device, info.name.to_string(), info.config).map_or_else(
+        |_| {
             warn!("Unable to create audio device for {}", info.name);
             None
-        }
-        Ok(device) => Some(device),
-    }
+        },
+        Some,
+    )
 }
 
 pub fn create_audio_device() -> Option<AudioDevice> {

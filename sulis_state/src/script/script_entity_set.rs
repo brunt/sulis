@@ -250,40 +250,27 @@ impl UserData for ScriptEntitySet {
                 .affected_points
                 .iter()
                 .filter(|_| gen_rand(0.0, 1.0) <= frac)
-                .map(|&(x, y)| {
-                    let mut map = HashMap::new();
-                    map.insert("x", x);
-                    map.insert("y", y);
-                    map
-                })
-                .collect::<Vec<_>>())
+                .map(|&(x, y)| [("x", x), ("y", y)].into_iter().collect())
+                .collect::<Vec<HashMap<_, _>>>())
         });
 
-        methods.add_method("surface", |_, set, ()| match &set.surface {
-            None => {
+        methods.add_method("surface", |_, set, ()| {
+            set.surface.clone().ok_or_else(|| {
                 warn!("Attempted to get surface from target set with no surface defined");
-                Err(rlua::Error::FromLuaConversionError {
+                rlua::Error::FromLuaConversionError {
                     from: "ScriptEntitySet",
                     to: "Surface",
                     message: Some("EntitySet has no surface".to_string()),
-                })
-            }
-            Some(surf) => Ok(surf.clone()),
+                }
+            })
         });
 
-        //##
         methods.add_method("affected_points", |_, set, ()| {
-            let table: Vec<HashMap<&str, i32>> = set
+            Ok(set
                 .affected_points
                 .iter()
-                .map(|p| {
-                    let mut map = HashMap::new();
-                    map.insert("x", p.0);
-                    map.insert("y", p.1);
-                    map
-                })
-                .collect();
-            Ok(table)
+                .map(|&(x, y)| [("x", x), ("y", y)].into_iter().collect())
+                .collect::<Vec<HashMap<&str, i32>>>())
         });
 
         methods.add_method("selected_point", |_, set, ()| match set.selected_point {
@@ -380,34 +367,29 @@ fn touchable(_lua: Context, set: &ScriptEntitySet, _args: ()) -> Result<ScriptEn
 }
 
 fn hostile_to(_lua: Context, set: &ScriptEntitySet, faction: String) -> Result<ScriptEntitySet> {
-    let faction = match Faction::option_from_str(&faction) {
-        None => {
-            warn!("Attempted to check hostile_to invalid faction {}", faction);
-            return Err(rlua::Error::FromLuaConversionError {
-                from: "String",
-                to: "Faction",
-                message: Some("Invalid faction ID".to_string()),
-            });
+    let faction = Faction::option_from_str(&faction).ok_or_else(|| {
+        warn!("Attempted to check hostile_to invalid faction {}", faction);
+        rlua::Error::FromLuaConversionError {
+            from: "String",
+            to: "Faction",
+            message: Some("Invalid faction ID".to_string()),
         }
-        Some(faction) => faction,
-    };
+    })?;
+
     filter_entities(set, (), &|_, entity, _| {
         faction.is_hostile(entity.borrow().actor.faction())
     })
 }
 
 fn friendly_to(_lua: Context, set: &ScriptEntitySet, faction: String) -> Result<ScriptEntitySet> {
-    let faction = match Faction::option_from_str(&faction) {
-        None => {
-            warn!("Attempted to check friendly_to invalid faction {}", faction);
-            return Err(rlua::Error::FromLuaConversionError {
-                from: "String",
-                to: "Faction",
-                message: Some("Invalid faction ID".to_string()),
-            });
+    let faction = Faction::option_from_str(&faction).ok_or_else(|| {
+        warn!("Attempted to check friendly_to invalid faction {}", faction);
+        rlua::Error::FromLuaConversionError {
+            from: "String",
+            to: "Faction",
+            message: Some("Invalid faction ID".to_string()),
         }
-        Some(faction) => faction,
-    };
+    })?;
 
     filter_entities(set, (), &|_, entity, _| {
         faction.is_friendly(entity.borrow().actor.faction())
@@ -431,30 +413,22 @@ fn filter_entities<T: Copy>(
     t: T,
     filter: &dyn Fn(&Rc<RefCell<EntityState>>, &Rc<RefCell<EntityState>>, T) -> bool,
 ) -> Result<ScriptEntitySet> {
-    let parent = ScriptEntity::new(set.parent);
-    let parent = parent.try_unwrap()?;
-
+    let parent = ScriptEntity::new(set.parent).try_unwrap()?;
     let mgr = GameState::turn_manager();
-    let mgr = mgr.borrow();
+    let mgr_ref = mgr.borrow();
 
-    let mut indices = Vec::new();
-    for index in set.indices.iter() {
-        let entity = match index {
-            None => continue,
-            Some(index) => mgr.entity_checked(*index),
-        };
-
-        let entity = match entity {
-            None => continue,
-            Some(entity) => entity,
-        };
-
-        if !(filter)(&parent, &entity, t) {
-            continue;
-        }
-
-        indices.push(*index);
-    }
+    let indices: Vec<Option<usize>> = set
+        .indices
+        .iter()
+        .filter_map(|&index| {
+            index.and_then(|idx| {
+                mgr_ref
+                    .entity_checked(idx)
+                    .filter(|entity| filter(&parent, entity, t))
+                    .map(|_| Some(idx))
+            })
+        })
+        .collect();
 
     Ok(ScriptEntitySet {
         parent: set.parent,

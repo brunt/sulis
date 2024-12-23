@@ -18,10 +18,10 @@ use std::collections::HashMap;
 use std::{any::Any, cell::RefCell, rc::Rc, time::Instant};
 
 use crate::{
-    character_window, formation_window, inventory_window, merchant_window, prop_window,
-    quest_window, world_map_window, AbilitiesBar, ApBar, AreaView, CharacterWindow, ConsoleWindow,
-    FormationWindow, GameOverWindow, InGameMenu, InitiativeTicker, InventoryWindow, MerchantWindow,
-    PortraitPane, PropWindow, QuestWindow, QuickItemBar, WorldMapWindow,
+    character_window, formation_window, in_game_menu, inventory_window, merchant_window,
+    prop_window, quest_window, world_map_window, AbilitiesBar, ApBar, AreaView, CharacterWindow,
+    ConsoleWindow, FormationWindow, GameOverWindow, InGameMenu, InitiativeTicker, InventoryWindow,
+    MerchantWindow, PortraitPane, PropWindow, QuestWindow, QuickItemBar, WorldMapWindow,
 };
 use sulis_core::config::Config;
 use sulis_core::io::{keyboard_event::Key, InputActionKind};
@@ -35,14 +35,15 @@ use sulis_state::{
     Script,
 };
 
-const WINDOW_NAMES: [&str; 7] = [
-    self::formation_window::NAME,
-    self::inventory_window::NAME,
-    self::character_window::NAME,
-    self::quest_window::NAME,
-    self::world_map_window::NAME,
-    self::merchant_window::NAME,
-    self::prop_window::NAME,
+const WINDOW_NAMES: [&str; 8] = [
+    formation_window::NAME,
+    inventory_window::NAME,
+    character_window::NAME,
+    quest_window::NAME,
+    world_map_window::NAME,
+    merchant_window::NAME,
+    prop_window::NAME,
+    in_game_menu::NAME,
 ];
 
 const NAME: &str = "game";
@@ -122,12 +123,15 @@ impl RootView {
         desired_state: bool,
         merchant_id: &str,
     ) {
-        self.set_window(widget, self::merchant_window::NAME, desired_state, &|| {
-            match GameState::selected().first() {
+        self.set_window(
+            widget,
+            merchant_window::NAME,
+            desired_state,
+            &|| match GameState::selected().first() {
                 None => None,
                 Some(entity) => Some(MerchantWindow::new(merchant_id, Rc::clone(entity))),
-            }
-        });
+            },
+        );
 
         self.set_inventory_window(widget, desired_state);
     }
@@ -158,7 +162,7 @@ impl RootView {
     }
 
     pub fn set_character_window(&mut self, widget: &Rc<RefCell<Widget>>, desired_state: bool) {
-        self.set_window(widget, self::character_window::NAME, desired_state, &|| {
+        self.set_window(widget, character_window::NAME, desired_state, &|| {
             match GameState::selected().first() {
                 None => None,
                 Some(entity) => Some(CharacterWindow::new(entity)),
@@ -183,7 +187,7 @@ impl RootView {
     }
 
     pub fn set_formation_window(&mut self, widget: &Rc<RefCell<Widget>>, desired_state: bool) {
-        self.set_window(widget, self::formation_window::NAME, desired_state, &|| {
+        self.set_window(widget, formation_window::NAME, desired_state, &|| {
             Some(FormationWindow::new())
         });
     }
@@ -194,7 +198,7 @@ impl RootView {
         desired_state: bool,
         transition_enabled: bool,
     ) {
-        self.set_window(widget, self::world_map_window::NAME, desired_state, &|| {
+        self.set_window(widget, world_map_window::NAME, desired_state, &|| {
             Some(WorldMapWindow::new(transition_enabled))
         });
     }
@@ -239,7 +243,7 @@ impl RootView {
     }
 
     pub fn toggle_formation_window(&mut self, widget: &Rc<RefCell<Widget>>) {
-        let desired_state = !Widget::has_child_with_name(widget, self::formation_window::NAME);
+        let desired_state = !Widget::has_child_with_name(widget, formation_window::NAME);
         self.set_formation_window(widget, desired_state);
     }
 
@@ -249,7 +253,7 @@ impl RootView {
     }
 
     pub fn toggle_inventory_window(&mut self, widget: &Rc<RefCell<Widget>>) {
-        let desired_state = !Widget::has_child_with_name(widget, self::inventory_window::NAME);
+        let desired_state = !Widget::has_child_with_name(widget, inventory_window::NAME);
         self.set_inventory_window(widget, desired_state);
     }
 
@@ -259,15 +263,17 @@ impl RootView {
     }
 
     pub fn toggle_quest_window(&mut self, widget: &Rc<RefCell<Widget>>) {
-        let desired_state = !Widget::has_child_with_name(widget, self::quest_window::NAME);
+        let desired_state = !Widget::has_child_with_name(widget, quest_window::NAME);
         self.set_quest_window(widget, desired_state);
     }
 
     pub fn toggle_map_window(&mut self, widget: &Rc<RefCell<Widget>>) {
-        let desired_state = !Widget::has_child_with_name(widget, self::world_map_window::NAME);
+        let desired_state = !Widget::has_child_with_name(widget, world_map_window::NAME);
         self.set_map_window(widget, desired_state, false);
     }
 
+    //make this toggle
+    // set_window does a lot
     pub fn show_menu(&mut self, widget: &Rc<RefCell<Widget>>) {
         let exit_cb = Callback::new(Rc::new(|widget, _| {
             let (_, root_view) = Widget::parent_mut::<RootView>(widget);
@@ -279,9 +285,13 @@ impl RootView {
             root_view.next_step = Some(NextGameStep::MainMenu);
         }));
 
+        // if let Some(w) = Widget::get_child_with_name(widget, in_game_menu::NAME) {
+        //     w.borrow_mut().mark_for_removal()
+        // } else {
         let menu = Widget::with_defaults(InGameMenu::new(exit_cb, menu_cb));
         menu.borrow_mut().state.set_modal(true);
         Widget::add_child_to(widget, menu);
+        // }
     }
 
     pub fn show_exit(&mut self, widget: &Rc<RefCell<Widget>>) {

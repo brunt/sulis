@@ -91,25 +91,15 @@ impl EntityState {
             }
         };
 
-        let area = match areas.get(&save.location.area) {
-            //##
-            None => Err(invalid_data_error(&format!(
-                "Invalid area '{}' for entity",
-                save.location.area
-            ))),
-            Some(area) => Ok(area),
-        }?;
+        let area = areas.get(&save.location.area).ok_or_else(|| {
+            invalid_data_error(&format!("Invalid area '{}' for entity", save.location.area))
+        })?;
 
         let location = Location::new(save.location.x, save.location.y, &area.borrow().area.area);
 
-        let size = match Module::object_size(&save.size) {
-            //##
-            None => Err(invalid_data_error(&format!(
-                "Invalid size '{}' for actor",
-                save.size
-            ))),
-            Some(size) => Ok(size),
-        }?;
+        let size = Module::object_size(&save.size).ok_or_else(|| {
+            invalid_data_error(&format!("Invalid size '{}' for actor", save.size))
+        })?;
 
         let actor = ActorState::load(save.actor, save.actor_base)?;
 
@@ -141,9 +131,8 @@ impl EntityState {
         ai_group: Option<usize>,
     ) -> EntityState {
         let ai_state = if is_pc {
-            let dim = (MAX_AREA_SIZE * MAX_AREA_SIZE) as usize;
             AIState::Player {
-                vis: vec![false; dim],
+                vis: vec![false; (MAX_AREA_SIZE * MAX_AREA_SIZE) as usize],
                 show_portrait: true,
             }
         } else {
@@ -153,10 +142,7 @@ impl EntityState {
             }
         };
 
-        let unique_id = match unique_id {
-            None => "".to_string(),
-            Some(val) => val,
-        };
+        let unique_id = unique_id.unwrap_or_else(|| "".to_string());
 
         debug!("Creating new entity state for {}", actor.id);
         let size = Rc::clone(&actor.race.size);

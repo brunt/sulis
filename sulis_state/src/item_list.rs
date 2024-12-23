@@ -63,8 +63,7 @@ impl ItemList {
     }
 
     pub fn find_index(&self, state: &ItemState) -> Option<usize> {
-        self.items.iter()
-            .position(|(_, item)| item == state)
+        self.items.iter().position(|(_, item)| item == state)
     }
 
     /// Adds the specified count of this item, and returns the index

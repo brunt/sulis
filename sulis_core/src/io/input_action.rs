@@ -83,10 +83,10 @@ pub enum InputActionKind {
     RawKey(Key),
 }
 
-impl std::cmp::Eq for InputActionKind {}
+impl Eq for InputActionKind {}
 
 // input action hashmap should never include the variants with data
-impl std::cmp::PartialEq for InputActionKind {
+impl PartialEq for InputActionKind {
     fn eq(&self, other: &InputActionKind) -> bool {
         std::mem::discriminant(self) == std::mem::discriminant(other)
     }

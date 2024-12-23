@@ -173,7 +173,6 @@ impl PropState {
                 for item_save_state in items {
                     let item = &item_save_state.item;
                     let variant = item.variant;
-                    //##
                     let item = match Module::create_get_item(&item.id, &item.adjectives) {
                         None => Err(invalid_data_error(&format!(
                             "No item with ID '{}'",
@@ -185,14 +184,13 @@ impl PropState {
                     item_list.add_quantity(item_save_state.quantity, ItemState::new(item, variant));
                 }
 
-                let loot = match loot_to_generate {
-                    //##
-                    None => Ok(None),
-                    Some(ref id) => match Module::loot_list(id) {
-                        None => Err(invalid_data_error(&format!("No loot list with ID '{id}'"))),
-                        Some(loot_list) => Ok(Some(loot_list)),
-                    },
-                }?;
+                let loot = loot_to_generate
+                    .map(|id| {
+                        Module::loot_list(&id).ok_or_else(|| {
+                            invalid_data_error(&format!("No loot list with ID '{id}'"))
+                        })
+                    })
+                    .transpose()?;
 
                 self.interactive = Interactive::Container {
                     items: item_list,
@@ -302,15 +300,12 @@ impl PropState {
                     return;
                 }
 
-                let loot = match loot_to_generate.take() {
-                    None => return,
-                    Some(loot) => loot,
-                };
-
-                info!("Generating loot for prop from '{}'", loot.id);
-                let generated_items = loot.generate();
-                for (qty, item) in generated_items {
-                    items.add_quantity(qty, item);
+                if let Some(loot) = loot_to_generate.take() {
+                    info!("Generating loot for prop from '{}'", loot.id);
+                    let generated_items = loot.generate();
+                    for (qty, item) in generated_items {
+                        items.add_quantity(qty, item);
+                    }
                 }
             }
             Interactive::Door {

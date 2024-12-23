@@ -79,7 +79,6 @@ impl Location {
         x >= 0 && y >= 0 && x < self.area_width && y < self.area_height
     }
 
-
     pub fn is_in(&self, area_state: &AreaState) -> bool {
         self.area_id == area_state.area.area.id
     }

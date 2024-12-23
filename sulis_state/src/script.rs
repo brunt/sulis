@@ -481,9 +481,8 @@ fn get_targeter() -> Result<Rc<RefCell<AreaTargeter>>> {
             to: "Targeter",
             message: Some("No targeter is present".to_string()),
         })
-        .map(|tg| {
+        .inspect(|_tg| {
             warn!("Error getting targeter");
-            tg
         })
 }
 

@@ -41,35 +41,16 @@ fn get_images_from_grid(
     grid: Vec<String>,
     resources: &ResourceSet,
 ) -> Result<Vec<Rc<dyn Image>>, Error> {
-    let mut images_vec: Vec<Rc<dyn Image>> = Vec::new();
-    for id in grid {
-        let image = resources.images.get(&id);
-        if image.is_none() {
-            return Err(invalid_data_error(&format!(
-                "Unable to locate sub image {id}"
-            )));
-        }
-
-        let image = image.unwrap();
-        images_vec.push(Rc::clone(image));
-    }
-
-    Ok(images_vec)
+    grid.into_iter()
+        .map(|id| {
+            resources
+                .images
+                .get(&id)
+                .map(Rc::clone)
+                .ok_or_else(|| invalid_data_error(&format!("Unable to locate sub image {}", id)))
+        })
+        .collect::<Result<Vec<_>, _>>()
 }
-// fn get_images_from_grid(
-//     grid: Vec<String>,
-//     resources: &ResourceSet,
-// ) -> Result<Vec<Rc<dyn Image>>, Error> {
-//     grid.into_iter()
-//         .map(|id| {
-//             resources
-//                 .images
-//                 .get(&id)
-//                 .map(Rc::clone)
-//                 .ok_or_else(|| invalid_data_error(&format!("Unable to locate sub image {}", id)))
-//         })
-//         .collect::<Result<Vec<_>, _>>()
-// }
 
 fn get_images_from_inline(
     grid: Vec<String>,
@@ -79,20 +60,19 @@ fn get_images_from_inline(
     let size = sub_image_data.size;
     let spritesheet = sub_image_data.spritesheet;
 
-    let mut images: Vec<Rc<dyn Image>> = Vec::new();
-    for id in grid {
-        let image_display = format!("{spritesheet}/{id}");
-        let builder = SimpleImageBuilder {
-            id: id.clone(),
-            image_display,
-            size,
-        };
-        let image = SimpleImage::generate(builder, resources)?;
-        resources.images.insert(id, Rc::clone(&image));
-        images.push(image);
-    }
-
-    Ok(images)
+    grid.into_iter()
+        .map(|id| {
+            let image_display = format!("{spritesheet}/{id}");
+            let builder = SimpleImageBuilder {
+                id: id.clone(),
+                image_display,
+                size,
+            };
+            let image = SimpleImage::generate(builder, resources)?;
+            resources.images.insert(id, Rc::clone(&image));
+            Ok(image)
+        })
+        .collect()
 }
 
 impl ComposedImage {
@@ -113,53 +93,70 @@ impl ComposedImage {
             None => get_images_from_grid(builder.grid, resources)?,
         };
 
-        // verify heights make sense for the grid
-        let mut total_height = 0;
-        for y in 0..GRID_DIM {
-            let row_height = images_vec
-                .get((y * GRID_DIM) as usize)
-                .unwrap()
-                .get_size()
-                .height;
+        // Helper function to validate uniformity of dimensions in rows or columns
+        fn validate_dimension<F>(
+            images: &[Rc<dyn Image>],
+            dim_size: i32,
+            index_fn: F,
+            dimension_name: &str,
+        ) -> Result<i32, Error>
+        where
+            F: Fn(i32, i32) -> usize,
+        {
+            let mut total_dim = 0;
+            for primary in 0..dim_size {
+                let reference_size = images[index_fn(primary, 0)].get_size();
+                let ref_dim = if dimension_name == "height" {
+                    reference_size.height
+                } else {
+                    reference_size.width
+                };
 
-            for x in 0..GRID_DIM {
-                let height = images_vec
-                    .get((y * GRID_DIM + x) as usize)
-                    .unwrap()
-                    .get_size()
-                    .height;
+                for secondary in 0..dim_size {
+                    let size = images[index_fn(primary, secondary)].get_size();
+                    let dim = if dimension_name == "height" {
+                        size.height
+                    } else {
+                        size.width
+                    };
 
-                if height != row_height {
-                    return Err(Error::new(
-                        ErrorKind::InvalidData,
-                        format!("All images in row {y} must have the same height"),
-                    ));
+                    if dim != ref_dim {
+                        return Err(Error::new(
+                            ErrorKind::InvalidData,
+                            format!(
+                                "All images in {} {} {} must have the same {}",
+                                dimension_name,
+                                if dimension_name == "height" {
+                                    "row"
+                                } else {
+                                    "column"
+                                },
+                                primary,
+                                dimension_name
+                            ),
+                        ));
+                    }
                 }
+                total_dim += ref_dim;
             }
-            total_height += row_height;
+            Ok(total_dim)
         }
 
-        //verify widths make sense for the grid
-        let mut total_width = 0;
-        for x in 0..GRID_DIM {
-            let col_width = images_vec.get(x as usize).unwrap().get_size().width;
+        // Validate row heights
+        let total_height = validate_dimension(
+            &images_vec,
+            GRID_DIM,
+            |y, x| (y * GRID_DIM + x) as usize,
+            "height",
+        )?;
 
-            for y in 0..GRID_DIM {
-                let width = images_vec
-                    .get((y * GRID_DIM + x) as usize)
-                    .unwrap()
-                    .get_size()
-                    .width;
-
-                if width != col_width {
-                    return Err(Error::new(
-                        ErrorKind::InvalidData,
-                        format!("All images in col {x} must have the same width"),
-                    ));
-                }
-            }
-            total_width += col_width;
-        }
+        // Validate column widths
+        let total_width = validate_dimension(
+            &images_vec,
+            GRID_DIM,
+            |x, y| (y * GRID_DIM + x) as usize,
+            "width",
+        )?;
 
         let middle_size = *images_vec.get((GRID_LEN / 2) as usize).unwrap().get_size();
 

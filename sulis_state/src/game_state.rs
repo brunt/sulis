@@ -91,13 +91,6 @@ impl GameState {
 
                 areas.insert(id, Rc::new(RefCell::new(area_state)));
             }
-            // let areas: HashMap<_, _> = save_state.areas
-            //     .into_iter()
-            //     .map(|(id, area_save)| {
-            //         let area_state = AreaState::load(&id, area_save);
-            //         (id, Rc::new(RefCell::new(area_state)))
-            //     })
-            //     .collect::<Result<_, _>>()?;
 
             let area_state = areas
                 .get(&save_state.current_area)
@@ -144,7 +137,6 @@ impl GameState {
             }
 
             for entity in entities.values() {
-                //##
                 let area_state = match areas.get(&entity.borrow().location.area_id) {
                     Some(state) => state,
                     None => unreachable!(),
@@ -226,9 +218,8 @@ impl GameState {
 
             let mut marked = HashMap::new();
             for anim in save_state.anims {
-                match anim.load(&entities, &effects, &mut marked) {
-                    None => (),
-                    Some(anim) => GameState::add_animation(anim),
+                if let Some(anim) = anim.load(&entities, &effects, &mut marked) {
+                    GameState::add_animation(anim);
                 }
             }
 

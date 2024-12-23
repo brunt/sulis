@@ -45,13 +45,19 @@ impl Inventory {
         equipped: Vec<Option<ItemSaveState>>,
         quick: Vec<Option<ItemSaveState>>,
     ) -> Result<(), Error> {
-        for (slot, item) in Slot::iter().zip(equipped).filter_map(|(slot, item)| item.map(|i| (*slot, i))) {
+        for (slot, item) in Slot::iter()
+            .zip(equipped)
+            .filter_map(|(slot, item)| item.map(|i| (*slot, i)))
+        {
             let item_state = Self::create_item_state(&item)?;
             Self::validate_equippable(&item_state, slot)?;
             self.equipped.insert(slot, item_state);
         }
 
-        for (quick_slot, item) in QuickSlot::iter().zip(quick).filter_map(|(slot, item)| item.map(|i| (*slot, i))) {
+        for (quick_slot, item) in QuickSlot::iter()
+            .zip(quick)
+            .filter_map(|(slot, item)| item.map(|i| (*slot, i)))
+        {
             let item_state = Self::create_item_state(&item)?;
             self.quick.insert(quick_slot, item_state);
         }
@@ -66,18 +72,17 @@ impl Inventory {
     }
 
     fn validate_equippable(item_state: &ItemState, slot: Slot) -> Result<(), Error> {
-        let equippable = item_state.item.equippable
-            .as_ref()
-            .ok_or_else(|| invalid_data_error(&format!("Item in slot '{slot:?}' is not equippable")))?;
+        let equippable = item_state.item.equippable.as_ref().ok_or_else(|| {
+            invalid_data_error(&format!("Item in slot '{slot:?}' is not equippable"))
+        })?;
 
         if equippable.slot != slot && equippable.alternate_slot != Some(slot) {
-            return Err(invalid_data_error(&format!("item in slot '{slot:?}' invalid equip type")));
+            return Err(invalid_data_error(&format!(
+                "item in slot '{slot:?}' invalid equip type"
+            )));
         }
         Ok(())
     }
-
-
-
 
     fn weapon_style_internal(
         &self,

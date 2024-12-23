@@ -201,11 +201,6 @@ pub fn write_json_to_file<T: serde::ser::Serialize, P: AsRef<Path>>(
     data: &T,
 ) -> Result<(), Error> {
     let file = File::create(filename)?;
-
-    // match serde_json::to_writer(file, data) {
-    //     Err(e) => Err(invalid_data_error(&format!("{e}"))),
-    //     Ok(()) => Ok(()),
-    // }
     serde_json::to_writer(file, data).map_err(|e| invalid_data_error(&format!("{e}")))
 }
 
@@ -214,22 +209,13 @@ pub fn write_to_file<T: serde::ser::Serialize, P: AsRef<Path>>(
     data: &T,
 ) -> Result<(), Error> {
     let file = File::create(filename)?;
-
-    // match serde_yaml::to_writer(file, data) {
-    //     Err(e) => invalid_data_error(&format!("{e}")),
-    //     Ok(()) => Ok(()),
-    // }
     serde_yaml::to_writer(file, data).map_err(|e| invalid_data_error(&format!("{e}")))
 }
 
 pub fn read_single_resource_path<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, Error> {
     let data = fs::read_to_string(path)?;
 
-    let result: Result<T, serde_yaml::Error> = serde_yaml::from_str(&data);
-    match result {
-        Ok(result) => Ok(result),
-        Err(e) => Err(Error::new(ErrorKind::InvalidData, format!("{e}"))),
-    }
+    serde_yaml::from_str(&data).map_err(|e| invalid_data_error(&format!("{e}")))
 }
 
 pub fn read_single_resource<T: serde::de::DeserializeOwned>(filename: &str) -> Result<T, Error> {

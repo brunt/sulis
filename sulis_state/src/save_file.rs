@@ -38,8 +38,7 @@ pub struct SaveFile {
 
 impl SaveFile {
     fn from_json(data: &str) -> Result<Self, Error> {
-        serde_json::from_str(data)
-            .map_err(|e| invalid_data_error(&format!("{e}")))
+        serde_json::from_str(data).map_err(|e| invalid_data_error(&format!("{e}")))
     }
 }
 
@@ -210,7 +209,7 @@ pub fn get_available_save_files() -> Result<Vec<SaveFileMetaData>, Error> {
                     let mut meta = save_file.meta;
                     meta.path = path_buf;
                     Ok::<SaveFileMetaData, Error>(meta)
-                },
+                }
                 Err(e) => {
                     warn!("Unable to read save file: {}", path_buf.to_string_lossy());
                     warn!("{}", e);
