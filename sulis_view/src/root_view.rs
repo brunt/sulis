@@ -272,8 +272,6 @@ impl RootView {
         self.set_map_window(widget, desired_state, false);
     }
 
-    //make this toggle
-    // set_window does a lot
     pub fn show_menu(&mut self, widget: &Rc<RefCell<Widget>>) {
         let exit_cb = Callback::new(Rc::new(|widget, _| {
             let (_, root_view) = Widget::parent_mut::<RootView>(widget);
@@ -285,13 +283,9 @@ impl RootView {
             root_view.next_step = Some(NextGameStep::MainMenu);
         }));
 
-        // if let Some(w) = Widget::get_child_with_name(widget, in_game_menu::NAME) {
-        //     w.borrow_mut().mark_for_removal()
-        // } else {
         let menu = Widget::with_defaults(InGameMenu::new(exit_cb, menu_cb));
         menu.borrow_mut().state.set_modal(true);
         Widget::add_child_to(widget, menu);
-        // }
     }
 
     pub fn show_exit(&mut self, widget: &Rc<RefCell<Widget>>) {

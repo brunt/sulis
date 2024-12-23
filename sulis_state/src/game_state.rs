@@ -372,26 +372,31 @@ impl GameState {
         let mut party = Vec::with_capacity(party_actors.len() + 1);
         party.push(Rc::clone(&pc_state));
 
-        party.extend(party_actors.into_iter().map(|member| {
-            let mut member_location = location.clone();
-            transition_handler::find_transition_location(
-                &mut member_location,
-                &member.race.size,
-                &area_state.borrow(),
-            );
+        party.extend(
+            party_actors
+                .into_iter()
+                .map(|member| {
+                    let mut member_location = location.clone();
+                    transition_handler::find_transition_location(
+                        &mut member_location,
+                        &member.race.size,
+                        &area_state.borrow(),
+                    );
 
-            let index = area_state
-                .borrow_mut()
-                .add_actor(member, member_location, None, true, None)
-                .map_err(|_| {
-                    error!("Unable to find start location for party member");
-                    invalid_data_error("Unable to find start locations.")
-                })?;
+                    let index = area_state
+                        .borrow_mut()
+                        .add_actor(member, member_location, None, true, None)
+                        .map_err(|_| {
+                            error!("Unable to find start location for party member");
+                            invalid_data_error("Unable to find start locations.")
+                        })?;
 
-            let member = mgr.borrow_mut().entity(index);
-            member.borrow_mut().actor.init_turn();
-            Ok::<Rc<RefCell<EntityState>>, Error>(member)
-        }).collect::<Result<Vec<_>, _>>()?);
+                    let member = mgr.borrow_mut().entity(index);
+                    member.borrow_mut().actor.init_turn();
+                    Ok::<Rc<RefCell<EntityState>>, Error>(member)
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        );
 
         for (flag, value) in &flags {
             pc_state.borrow_mut().set_custom_flag(flag, value);
@@ -655,9 +660,8 @@ impl GameState {
 
                 let member_ref = member.borrow();
                 if let Some(prop) = &member_ref.actor.actor.race.pc_death_prop {
-                    let area_state =
-                        GameState::get_area_state(&member_ref.location.area_id)
-                            .expect("failed to get area state when removing disabled party members");
+                    let area_state = GameState::get_area_state(&member_ref.location.area_id)
+                        .expect("failed to get area state when removing disabled party members");
                     area_state.borrow_mut().props_mut().add_at(
                         prop,
                         member_ref.location.x,
