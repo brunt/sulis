@@ -473,19 +473,17 @@ impl ScriptState {
 }
 
 fn get_targeter() -> Result<Rc<RefCell<AreaTargeter>>> {
-    let area_state = GameState::area_state();
-    let area_state = area_state.borrow();
-    match area_state.targeter() {
-        None => {
+    GameState::area_state()
+        .borrow()
+        .targeter()
+        .ok_or_else(|| rlua::Error::ToLuaConversionError {
+            from: "Lua",
+            to: "Targeter",
+            message: Some("No targeter is present".to_string()),
+        })
+        .inspect(|_tg| {
             warn!("Error getting targeter");
-            Err(rlua::Error::ToLuaConversionError {
-                from: "Lua",
-                to: "Targeter",
-                message: Some("No targeter is present".to_string()),
-            })
-        }
-        Some(tg) => Ok(tg),
-    }
+        })
 }
 
 fn get_rlua_std_lib() -> rlua::StdLib {

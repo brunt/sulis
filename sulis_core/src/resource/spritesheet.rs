@@ -98,7 +98,7 @@ impl Spritesheet {
                     "Unable to read spritesheet source '{}' from any of '{:?}'",
                     builder.src, builder.source_dirs
                 );
-                return unable_to_create_error("spritesheet", &builder.id);
+                return Err(unable_to_create_error("spritesheet", &builder.id));
             }
             Some(img) => img,
         };

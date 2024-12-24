@@ -16,8 +16,8 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io::{Error, ErrorKind, Read};
+use std::fs;
+use std::io::{Error, ErrorKind};
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -54,13 +54,13 @@ pub struct Config {
 
 impl Config {
     pub fn set(config: Config) {
-        let old_config = CONFIG.with(|c| c.replace(config));
+        let old_config = CONFIG.replace(config);
 
-        OLD_CONFIG.with(|c| c.replace(Some(old_config)));
+        OLD_CONFIG.replace(Some(old_config));
     }
 
     pub fn take_old_config() -> Option<Config> {
-        OLD_CONFIG.with(|c| c.replace(None))
+        OLD_CONFIG.replace(None)
     }
 
     pub fn get_clone() -> Config {
@@ -331,16 +331,10 @@ impl RawClick {
 
 #[cfg(not(target_os = "windows"))]
 fn get_user_dir() -> PathBuf {
-    let mut path = match ::std::env::var("XDG_CONFIG_HOME") {
-        Ok(path_str) => PathBuf::from(path_str),
-        Err(_) => {
-            let mut path = get_home_dir();
-            path.push(".config/");
-            path
-        }
-    };
-    path.push("sulis/");
-    path
+    std::env::var("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| get_home_dir().join(".config"))
+        .join("sulis")
 }
 
 #[cfg(target_os = "windows")]
@@ -353,10 +347,7 @@ fn get_user_dir() -> PathBuf {
 }
 
 fn get_home_dir() -> PathBuf {
-    match home::home_dir() {
-        Some(path) => path,
-        None => PathBuf::new(),
-    }
+    home::home_dir().unwrap_or_default()
 }
 
 const CONFIG_FILENAME: &str = "config.yml";
@@ -371,44 +362,41 @@ pub fn create_dir_and_warn(path: &Path) {
 
 impl Config {
     fn init() -> Config {
-        let revision = match Config::new(Path::new(CONFIG_BASE), 0) {
-            Ok(config) => config.revision,
-            Err(orig_e) => match Config::new(&Path::new("../").join(CONFIG_BASE), 0) {
-                Err(_) => {
-                    eprintln!("{orig_e}");
-                    eprintln!("Unable to parse revision from config.sample");
-                    std::process::exit(1);
-                }
-                Ok(config) => config.revision,
-            },
-        };
-
-        let mut config_path = USER_DIR.clone();
-        config_path.push(CONFIG_FILENAME);
-        let config_path = config_path.as_path();
+        let revision = Self::get_revision();
+        let config_path = USER_DIR.join(CONFIG_FILENAME);
 
         if !config_path.is_file() {
-            Config::create_config_from_sample(config_path);
+            Config::create_config_from_sample(&config_path);
         }
 
-        match Config::new(config_path, revision) {
+        match Config::new(&config_path, revision) {
             Ok(config) => config,
-            Err(e) => {
-                eprintln!("{e}");
-                eprintln!("Error parsing config file at '{CONFIG_FILENAME}', attempting delete.");
-
-                Config::create_config_from_sample(config_path);
-
-                match Config::new(config_path, revision) {
-                    Ok(config) => config,
-                    Err(e) => {
-                        eprintln!("{e}");
-                        eprintln!("Fatal error in sample config.  Exiting...");
-                        std::process::exit(1);
-                    }
-                }
-            }
+            Err(e) => Self::handle_config_error(e, &config_path, revision),
         }
+    }
+
+    fn get_revision() -> u32 {
+        Config::new(Path::new(CONFIG_BASE), 0)
+            .or_else(|_| Config::new(&Path::new("../").join(CONFIG_BASE), 0))
+            .map(|config| config.revision)
+            .unwrap_or_else(|e| {
+                eprintln!("{e}");
+                eprintln!("Unable to parse revision from config.sample");
+                std::process::exit(1);
+            })
+    }
+
+    fn handle_config_error(e: Error, config_path: &Path, revision: u32) -> Config {
+        eprintln!("{e}");
+        eprintln!("Error parsing config file at '{CONFIG_FILENAME}', attempting delete.");
+
+        Config::create_config_from_sample(config_path);
+
+        Config::new(config_path, revision).unwrap_or_else(|e| {
+            eprintln!("{e}");
+            eprintln!("Fatal error in sample config. Exiting...");
+            std::process::exit(1);
+        })
     }
 
     fn create_config_from_sample(config_path: &Path) {
@@ -426,32 +414,22 @@ impl Config {
                 eprintln!("{e}");
                 eprintln!("Unable to create configuration file '{CONFIG_FILENAME}'");
                 eprintln!("Exiting...");
-                ::std::process::exit(1);
+                std::process::exit(1);
             }
         }
     }
 
     pub fn new(filepath: &Path, required_revision: u32) -> Result<Config, Error> {
-        let mut f = File::open(filepath)?;
+        let file_data = fs::read_to_string(filepath)?;
 
-        let mut file_data = String::new();
-        f.read_to_string(&mut file_data)?;
+        let config: Config = serde_yaml::from_str(&file_data)
+            .map_err(|e| Error::new(ErrorKind::InvalidData, e.to_string()))?;
 
-        let config: Result<Config, serde_yaml::Error> = serde_yaml::from_str(&file_data);
-        let config = match config {
-            Ok(config) => config,
-            Err(e) => {
-                return Err(Error::new(ErrorKind::InvalidData, format!("{e}")));
-            }
-        };
-
-        for key in RawClick::iter() {
-            if !config.input.click_actions.contains_key(key) {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    "Must specify an action for each of Left, Right & Middle Click",
-                ));
-            }
+        if !RawClick::iter().all(|key| config.input.click_actions.contains_key(key)) {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "Must specify an action for each of Left, Right & Middle Click",
+            ));
         }
 
         if config.revision < required_revision {

@@ -39,37 +39,36 @@ impl TimerImage {
         builder: TimerImageBuilder,
         images: &HashMap<String, Rc<dyn Image>>,
     ) -> Result<Rc<dyn Image>, Error> {
-        let mut frames: Vec<Rc<dyn Image>> = Vec::new();
-
         if builder.frames.is_empty() {
-            return invalid_data_error("Timer image must have 1 or more frames.");
+            return Err(invalid_data_error(
+                "Timer image must have 1 or more frames.",
+            ));
         }
 
-        let mut size: Option<Size> = None;
-        for id in builder.frames {
-            let image = match images.get(&id) {
-                None => {
-                    return invalid_data_error(&format!("Unable to locate image for frame {id}"));
-                }
-                Some(image) => image,
-            };
+        let mut frames = Vec::new();
+        let mut size = None;
 
-            match size {
-                None => size = Some(*image.get_size()),
-                Some(size) => {
-                    if size != *image.get_size() {
-                        return invalid_data_error(
-                            "All frames in a timer image must have the\
-                             same size.",
-                        );
-                    }
+        for id in &builder.frames {
+            let image = images.get(id).ok_or_else(|| {
+                invalid_data_error(&format!("Unable to locate image for frame {id}"))
+            })?;
+
+            let image_size = *image.get_size();
+            if let Some(expected_size) = size {
+                if expected_size != image_size {
+                    return Err(invalid_data_error(
+                        "All frames in a timer image must have the same size.",
+                    ));
                 }
+            } else {
+                size = Some(image_size);
             }
 
             frames.push(Rc::clone(image));
         }
 
         let total_frame_time = builder.frame_time_millis * frames.len() as u32;
+
         Ok(Rc::new(TimerImage {
             frames,
             size: size.unwrap(),

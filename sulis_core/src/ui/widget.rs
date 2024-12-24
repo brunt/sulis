@@ -20,7 +20,7 @@ use std::mem;
 use std::rc::Rc;
 
 use crate::config::Config;
-use crate::io::{event, Event, GraphicsRenderer};
+use crate::io::{Event, GraphicsRenderer};
 use crate::resource::ResourceSet;
 use crate::ui::{theme, Cursor, EmptyWidget, Theme, WidgetKind, WidgetState};
 use crate::util::{Point, Rect, Size};
@@ -349,22 +349,19 @@ impl Widget {
     /// that is already borrowed (typically by the caller).
     /// returns true if the child exists, false otherwise
     pub fn has_child_with_name(widget: &Rc<RefCell<Widget>>, name: &str) -> bool {
-        for child in widget.borrow().children.iter() {
-            let child_ref = match child.try_borrow() {
-                Err(_) => continue,
-                Ok(child) => child,
-            };
-
-            let kind = match child_ref.kind.try_borrow() {
-                Err(_) => continue,
-                Ok(kind) => kind,
-            };
-
-            if kind.get_name() == name {
-                return true;
-            }
-        }
-        false
+        widget.borrow().children.iter().any(|child| {
+            child
+                .try_borrow()
+                .ok()
+                .and_then(|child_ref| {
+                    child_ref
+                        .kind
+                        .try_borrow()
+                        .ok()
+                        .map(|kind| kind.get_name() == name)
+                })
+                .unwrap_or(false)
+        })
     }
 
     /// gets the child of the specified widget with the specified kind name, if it
@@ -374,22 +371,17 @@ impl Widget {
         widget: &Rc<RefCell<Widget>>,
         name: &str,
     ) -> Option<Rc<RefCell<Widget>>> {
-        for child in widget.borrow().children.iter() {
-            let child_ref = match child.try_borrow() {
-                Err(_) => continue,
-                Ok(child) => child,
-            };
-
-            let kind = match child_ref.kind.try_borrow() {
-                Err(_) => continue,
-                Ok(kind) => kind,
-            };
-
-            if kind.get_name() == name {
-                return Some(Rc::clone(child));
-            }
-        }
-        None
+        widget.borrow().children.iter().find_map(|child| {
+            child.try_borrow().ok().and_then(|child_ref| {
+                child_ref.kind.try_borrow().ok().and_then(|kind| {
+                    if kind.get_name() == name {
+                        Some(Rc::clone(child))
+                    } else {
+                        None
+                    }
+                })
+            })
+        })
     }
 
     /// Attempts to grab keyboard focus.  this will fail if
@@ -534,49 +526,46 @@ impl Widget {
     }
 
     fn recursive_on_remove(widget: &Rc<RefCell<Widget>>) {
-        let len = widget.borrow().children.len();
-        for i in 0..len {
-            let child = Rc::clone(&widget.borrow().children[i]);
-            Widget::recursive_on_remove(&child);
+        let widget_ref = widget.borrow();
+
+        for child in &widget_ref.children {
+            Widget::recursive_on_remove(child);
         }
 
-        let kind = Rc::clone(&widget.borrow().kind);
+        // Clone kind before dropping widget_ref to avoid multiple borrows
+        let kind = Rc::clone(&widget_ref.kind);
+        drop(widget_ref);
+
         kind.borrow_mut().on_remove(widget);
     }
 
     fn find_new_modal_child(parent: &Rc<RefCell<Widget>>) -> Option<Rc<RefCell<Widget>>> {
-        let len = parent.borrow().children.len();
-        for i in (0..len).rev() {
-            let child = Rc::clone(&parent.borrow().children[i]);
+        parent.borrow().children.iter().rev().find_map(|child| {
             if child.borrow().state.is_modal {
-                return Some(child);
+                Some(Rc::clone(child))
+            } else {
+                Widget::find_new_modal_child(child)
             }
-
-            if let Some(child) = Widget::find_new_modal_child(&child) {
-                return Some(child);
-            }
-        }
-
-        None
+        })
     }
 
     pub fn check_children_removal(parent: &Rc<RefCell<Widget>>) {
-        let len = parent.borrow().children.len();
-        for i in (0..len).rev() {
-            let child = Rc::clone(&parent.borrow().children[i]);
+        let mut parent = parent.borrow_mut();
 
-            let marked = child.borrow().marked_for_removal;
-            if marked {
-                Widget::recursive_on_remove(&child);
-                parent.borrow_mut().children.remove(i);
+        parent.children.retain(|child| {
+            if child.borrow().marked_for_removal {
+                Widget::recursive_on_remove(child);
+                false
+            } else {
+                true
             }
-        }
+        });
 
-        let parent = parent.borrow();
-        let len = parent.children.len();
-        for i in 0..len {
-            let child = Rc::clone(&parent.children[i]);
-            Widget::check_children_removal(&child);
+        let children = parent.children.clone();
+        drop(parent); // Release the mutable borrow
+
+        for child in children.iter() {
+            Widget::check_children_removal(child);
         }
     }
 
@@ -703,7 +692,7 @@ impl Widget {
         }
 
         match event.kind {
-            event::Kind::MouseMove { .. } => (),
+            MouseMove { .. } => (),
             _ => trace!(
                 "Dispatching event {:?} in {:?}",
                 event,
@@ -723,16 +712,16 @@ impl Widget {
                 child.borrow().theme_id
             );
             match event.kind {
-                event::Kind::CharTyped(c) => {
+                CharTyped(c) => {
                     return child_kind.borrow_mut().on_char_typed(&child, c);
                 }
-                event::Kind::KeyPress(key) => {
+                KeyPress(key) => {
                     // send key press events only to the keyboard focus child when one exists
                     return child_kind.borrow_mut().on_key_press(&child, key);
                 }
                 _ => (),
             }
-        } else if let event::Kind::CharTyped(_) = event.kind {
+        } else if let CharTyped(_) = event.kind {
             return false;
         }
 

@@ -177,13 +177,13 @@ fn add_travel_callback(
     label: &Rc<RefCell<Widget>>,
 ) -> bool {
     let cur_location_id = match cur_location_id {
-        None => return false,
         Some(id) => id,
+        None => return false,
     };
 
     let hours = match location.travel_times.get(cur_location_id) {
+        Some(&hours) => hours,
         None => return false,
-        Some(hours) => *hours,
     };
 
     let mut travel_time = Time::from_hours(hours);
@@ -195,16 +195,18 @@ fn add_travel_callback(
         .add_text_arg("travel_time", &travel_time.to_string());
 
     let (x, y) = (location.linked_area_pos.x, location.linked_area_pos.y);
-    let area_id = match &location.linked_area {
-        None => return false,
-        Some(id) => id.to_string(),
-    };
 
-    button
-        .borrow_mut()
-        .state
-        .add_callback(travel_callback(area_id, x, y, travel_time));
-    true
+    if let Some(area_id) = &location.linked_area {
+        button.borrow_mut().state.add_callback(travel_callback(
+            area_id.to_string(),
+            x,
+            y,
+            travel_time,
+        ));
+        true
+    } else {
+        false
+    }
 }
 
 fn travel_callback(area_id: String, x: i32, y: i32, travel_time: Time) -> Callback {

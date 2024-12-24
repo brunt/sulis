@@ -24,7 +24,7 @@ use sulis_state::GameState;
 
 use crate::{LoadWindow, RootView};
 
-const NAME: &str = "in_game_menu";
+pub const NAME: &str = "in_game_menu";
 
 pub struct InGameMenu {
     exit_callback: Callback,

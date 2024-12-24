@@ -44,18 +44,12 @@ pub struct LayeredImage {
 
 impl LayeredImage {
     pub fn new(images: Vec<Layer>, swap_hue: Option<f32>) -> LayeredImage {
-        let mut max_x = 0.0;
-        let mut max_y = 0.0;
-
-        for layer in images.iter() {
-            if layer.image.get_width_f32() > max_x {
-                max_x = layer.image.get_width_f32();
-            }
-
-            if layer.image.get_height_f32() > max_y {
-                max_y = layer.image.get_height_f32();
-            }
-        }
+        let (max_x, max_y): (f32, f32) = images.iter().fold((0.0, 0.0), |(max_x, max_y), layer| {
+            (
+                max_x.max(layer.image.get_width_f32()),
+                max_y.max(layer.image.get_height_f32()),
+            )
+        });
 
         LayeredImage {
             layers: images,

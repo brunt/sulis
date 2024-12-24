@@ -71,13 +71,13 @@ impl WidgetKind for InitiativeTicker {
             .add(ChangeListener::invalidate(NAME, widget));
 
         let pane = Widget::empty("pane");
-        let mut first = true;
-        for entity in mgr.borrow().active_iter() {
-            let theme = if first { "current_entry" } else { "entry" };
-            let widget = Widget::with_theme(TickerLabel::new(entity), theme);
-            Widget::add_child_to(&pane, widget);
-            first = false;
-        }
+        mgr.borrow()
+            .active_iter()
+            .enumerate()
+            .for_each(|(i, entity)| {
+                let theme = if i == 0 { "current_entry" } else { "entry" };
+                Widget::add_child_to(&pane, Widget::with_theme(TickerLabel::new(entity), theme));
+            });
 
         vec![pane]
     }

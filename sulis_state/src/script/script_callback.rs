@@ -18,7 +18,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Error;
 use std::rc::Rc;
-use std::result;
 
 use rlua::{UserData, UserDataMethods};
 use serde::{Deserialize, Serialize};
@@ -324,15 +323,16 @@ impl CallbackData {
     pub fn update_entity_refs_on_load(
         &mut self,
         entities: &HashMap<usize, Rc<RefCell<EntityState>>>,
-    ) -> result::Result<(), Error> {
-        match entities.get(&self.parent) {
-            None => {
-                return invalid_data_error(&format!("Invalid parent {} for callback", self.parent));
-            }
-            Some(entity) => self.parent = entity.borrow().index(),
-        }
+    ) -> Result<(), Error> {
+        self.parent = entities
+            .get(&self.parent)
+            .ok_or_else(|| {
+                invalid_data_error(&format!("Invalid parent {} for callback", self.parent))
+            })?
+            .borrow()
+            .index();
 
-        if let Some(ref mut targets) = &mut self.targets {
+        if let Some(targets) = &mut self.targets {
             targets.update_entity_refs_on_load(entities)?;
         }
         Ok(())
@@ -537,15 +537,10 @@ impl CallbackData {
             return;
         }
 
-        let targets = match compute_surface_targets(self.effect, self.parent, target) {
-            Some(targets) => targets,
-            None => {
-                warn!("Unable to fire {:?}", kind);
-                return;
-            }
-        };
-
-        self.exec_standard_script(targets, kind);
+        match compute_surface_targets(self.effect, self.parent, target) {
+            Some(targets) => self.exec_standard_script(targets, kind),
+            None => warn!("Unable to fire {:?}", kind),
+        }
     }
 }
 
@@ -669,44 +664,30 @@ fn compute_surface_targets(
     parent: usize,
     target: Option<usize>,
 ) -> Option<ScriptEntitySet> {
-    let effect = match effect {
-        None => {
-            warn!("Surface effect is not set");
-            return None;
-        }
-        Some(index) => index,
-    };
-
+    let effect_index = effect?;
     let mut targets = ScriptEntitySet::with_parent(parent);
-    targets.surface = Some(ScriptActiveSurface { index: effect });
-    let mgr = GameState::turn_manager();
-    let mgr = mgr.borrow();
+    targets.surface = Some(ScriptActiveSurface {
+        index: effect_index,
+    });
 
-    let effect = match mgr.effect_checked(effect) {
-        None => {
-            warn!("Invalid effect for surface");
-            return None;
-        }
-        Some(effect) => effect,
+    let binding = GameState::turn_manager();
+    let mgr = binding.borrow();
+    let effect = mgr.effect_checked(effect_index)?;
+
+    let (area_id, points) = effect.surface()?;
+
+    targets.affected_points = points.iter().map(|p| (p.x, p.y)).collect();
+
+    let area = GameState::get_area_state(area_id).unwrap();
+    targets.indices = match target {
+        Some(t) => vec![Some(t)],
+        None => area
+            .borrow()
+            .entities_with_points(points)
+            .into_iter()
+            .map(Some)
+            .collect(),
     };
-
-    match effect.surface() {
-        None => {
-            warn!("Attempted to exec on_surface_round_elapsed on non-surface");
-            return None;
-        }
-        Some((area_id, points)) => {
-            targets.affected_points = points.iter().map(|p| (p.x, p.y)).collect();
-
-            let area = GameState::get_area_state(area_id).unwrap();
-            if let Some(target) = target {
-                targets.indices.push(Some(target));
-            } else {
-                let inside = area.borrow().entities_with_points(points);
-                targets.indices = inside.into_iter().map(Some).collect();
-            }
-        }
-    }
 
     Some(targets)
 }

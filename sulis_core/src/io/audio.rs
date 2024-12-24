@@ -391,12 +391,10 @@ impl AudioDevice {
     }
 
     fn play_sfx(&mut self, sound: SoundSource) {
-        let mut sink = match AudioSink::new(&self.stream_handle, self.config.effects_volume) {
-            Err(_) => return,
-            Ok(sink) => sink,
-        };
-        sink.play_immediate(sound);
-        sink.detach();
+        if let Ok(mut sink) = AudioSink::new(&self.stream_handle, self.config.effects_volume) {
+            sink.play_immediate(sound);
+            sink.detach();
+        }
     }
 }
 
@@ -480,23 +478,20 @@ pub fn get_audio_devices() -> Vec<AudioDeviceInfo> {
         output
     });
 
-    match audio_thread.join() {
-        Err(e) => {
-            warn!("Error in audio setup: {:?}", e);
-            Vec::new()
-        }
-        Ok(output) => output,
-    }
+    audio_thread.join().unwrap_or_else(|e| {
+        warn!("Error in audio setup: {:?}", e);
+        Vec::new()
+    })
 }
 
 pub fn init_device(info: AudioDeviceInfo) -> Option<AudioDevice> {
-    match AudioDevice::new(info.device, info.name.to_string(), info.config) {
-        Err(_) => {
+    AudioDevice::new(info.device, info.name.to_string(), info.config).map_or_else(
+        |_| {
             warn!("Unable to create audio device for {}", info.name);
             None
-        }
-        Ok(device) => Some(device),
-    }
+        },
+        Some,
+    )
 }
 
 pub fn create_audio_device() -> Option<AudioDevice> {

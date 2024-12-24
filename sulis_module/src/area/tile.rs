@@ -58,7 +58,7 @@ impl Feature {
                 let tile = match module.tiles.get(&tile_id) {
                     None => {
                         warn!("No tile '{}' found for feature '{}'", tile_id, id);
-                        return unable_to_create_error("feature", &id);
+                        return Err(unable_to_create_error("feature", &id));
                     }
                     Some(tile) => tile,
                 };
@@ -73,7 +73,7 @@ impl Feature {
 
         if entries.is_empty() {
             warn!("Feature '{}' must have 1 or more entries.", id);
-            return unable_to_create_error("feature", &id);
+            return Err(unable_to_create_error("feature", &id));
         }
 
         let preview = entries[0].0.clone();
@@ -307,12 +307,12 @@ impl Tile {
     pub fn new(id: String, builder: TileBuilder) -> Result<Tile, Error> {
         if builder.impass.is_some() && builder.pass.is_some() {
             warn!("Cannot specify both pass and impass for a tile");
-            return unable_to_create_error("tile", &id);
+            return Err(unable_to_create_error("tile", &id));
         }
 
         if builder.invis.is_some() && builder.vis.is_some() {
             warn!("Cannot specify both vis and invis for a tile");
-            return unable_to_create_error("tile", &id);
+            return Err(unable_to_create_error("tile", &id));
         }
 
         let (width, height) = (builder.size[0], builder.size[1]);
@@ -389,15 +389,17 @@ pub fn verify_point(
     p: Vec<usize>,
 ) -> Result<(i32, i32), Error> {
     if p.len() != 2 {
-        return invalid_data_error(&format!("{kind} point array length is not equal to 2"));
+        return Err(invalid_data_error(&format!(
+            "{kind} point array length is not equal to 2"
+        )));
     }
 
     let x = p[0];
     let y = p[1];
     if x > width || y >= height {
-        return invalid_data_error(&format!(
-            "{kind} point has coordiantes greater than size {width},{height}"
-        ));
+        return Err(invalid_data_error(&format!(
+            "{kind} point has coordinates greater than size {width},{height}"
+        )));
     }
     Ok((x as i32, y as i32))
 }

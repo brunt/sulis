@@ -75,7 +75,7 @@ impl Race {
         let size = match module.sizes.get(&builder.size) {
             None => {
                 warn!("No match found for size '{}'", builder.size);
-                return unable_to_create_error("race", &builder.id);
+                return Err(unable_to_create_error("race", &builder.id));
             }
             Some(size) => Rc::clone(size),
         };
@@ -94,12 +94,12 @@ impl Race {
             ImageLayerSet::new(builder.default_images_by_sex)
         } else {
             warn!("Must specify either default_images or default_images_by_sex");
-            return unable_to_create_error("race", &builder.id);
+            return Err(unable_to_create_error("race", &builder.id));
         }?;
 
         if builder.base_attack.damage.kind.is_none() {
             warn!("Attack must always have a damage kind specified.");
-            return unable_to_create_error("race", &builder.id);
+            return Err(unable_to_create_error("race", &builder.id));
         }
 
         let mut hair_colors = Vec::new();
@@ -119,7 +119,7 @@ impl Race {
                 match ResourceSet::image(&image_id) {
                     None => {
                         warn!("No image found with id '{}'", image_id);
-                        return unable_to_create_error("race", &builder.id);
+                        return Err(unable_to_create_error("race", &builder.id));
                     }
                     Some(image) => images.push(image),
                 }
@@ -132,7 +132,7 @@ impl Race {
             Some(id) => match module.props.get(&id) {
                 None => {
                     warn!("No prop found with id '{}' for pc_death_prop", id);
-                    return unable_to_create_error("race", &builder.id);
+                    return Err(unable_to_create_error("race", &builder.id));
                 }
                 Some(prop) => Some(Rc::clone(prop)),
             },

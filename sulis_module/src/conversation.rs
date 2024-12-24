@@ -67,14 +67,14 @@ impl Conversation {
     pub fn new(builder: ConversationBuilder, _module: &Module) -> Result<Conversation, Error> {
         if builder.initial_nodes.is_empty() {
             warn!("Must specify at least one initial node for conversation");
-            return unable_to_create_error("conversation", &builder.id);
+            return Err(unable_to_create_error("conversation", &builder.id));
         }
 
         let mut initial_nodes = Vec::new();
         for node in builder.initial_nodes {
             if !builder.nodes.contains_key(&node.id) {
                 warn!("Invalid initial node '{}'", node.id);
-                return unable_to_create_error("conversation", &builder.id);
+                return Err(unable_to_create_error("conversation", &builder.id));
             }
 
             initial_nodes.push((node.id, node.to_view));
@@ -85,7 +85,7 @@ impl Conversation {
                 if let Some(ref to) = response.to {
                     if !builder.nodes.contains_key(to) {
                         warn!("Invalid to '{}' for node response.  Must be a node ID", to);
-                        return unable_to_create_error("conversation", &builder.id);
+                        return Err(unable_to_create_error("conversation", &builder.id));
                     }
                 }
             }

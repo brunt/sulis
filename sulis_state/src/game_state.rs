@@ -92,21 +92,21 @@ impl GameState {
                 areas.insert(id, Rc::new(RefCell::new(area_state)));
             }
 
-            let area_state = match areas.get(&save_state.current_area) {
-                Some(area) => Ok(Rc::clone(area)),
-                None => invalid_data_error(&format!(
-                    "Unable to load current area '{}'",
-                    save_state.current_area
-                )),
-            }?;
+            let area_state = areas
+                .get(&save_state.current_area)
+                .map(Rc::clone)
+                .ok_or_else(|| {
+                    invalid_data_error(&format!(
+                        "Unable to load current area'{}'",
+                        save_state.current_area
+                    ))
+                })?;
 
             let width = area_state.borrow().area.area.width;
             let height = area_state.borrow().area.area.height;
             let path_finder = PathFinder::new(width, height);
 
             let mut entities = HashMap::new();
-            let mut selected = Vec::new();
-            let mut party = Vec::new();
 
             for entity_save in save_state.manager.entities {
                 let index = entity_save.index;
@@ -114,19 +114,29 @@ impl GameState {
                 entities.insert(index, entity);
             }
 
-            for index in save_state.party {
-                match entities.get(&index) {
-                    None => return invalid_data_error(&format!("Invalid party index {index}")),
-                    Some(entity) => party.push(Rc::clone(entity)),
-                }
-            }
+            let party: Vec<Rc<RefCell<EntityState>>> = save_state
+                .party
+                .iter()
+                .map(|&index| {
+                    entities
+                        .get(&index)
+                        .ok_or_else(|| invalid_data_error(&format!("Invalid party index {index}")))
+                        .map(Rc::clone)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
 
-            for index in save_state.selected {
-                match entities.get(&index) {
-                    None => return invalid_data_error(&format!("Invalid selected index {index}")),
-                    Some(entity) => selected.push(Rc::clone(entity)),
-                }
-            }
+            let selected = save_state
+                .selected
+                .iter()
+                .map(|&index| {
+                    entities
+                        .get(&index)
+                        .ok_or_else(|| {
+                            invalid_data_error(&format!("Invalid selected index {index}"))
+                        })
+                        .map(Rc::clone)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
 
             for entity in entities.values() {
                 let area_state = match areas.get(&entity.borrow().location.area_id) {
@@ -145,16 +155,18 @@ impl GameState {
 
             let mgr = GameState::turn_manager();
             mgr.borrow_mut().cur_ai_group_index = save_state.manager.cur_ai_group_index;
-            for (key, value) in save_state.manager.ai_groups {
-                let index = match key.parse::<usize>() {
-                    Ok(val) => val,
-                    Err(e) => {
-                        let err = Error::new(ErrorKind::InvalidInput, e);
-                        return Err(err);
-                    }
-                };
-                mgr.borrow_mut().ai_groups.insert(index, value);
-            }
+            mgr.borrow_mut().ai_groups.extend(
+                save_state
+                    .manager
+                    .ai_groups
+                    .into_iter()
+                    .map(|(key, value)| {
+                        key.parse::<usize>()
+                            .map_err(|e| Error::new(ErrorKind::InvalidInput, e))
+                            .map(|index| (index, value))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
 
             for effect_save in save_state.manager.effects {
                 let old_index = effect_save.index;
@@ -162,34 +174,25 @@ impl GameState {
 
                 let mut effect = Effect::load(effect_save, new_index, &entities)?;
                 if let Some(index) = effect.entity {
-                    let entity = match entities.get(&index) {
-                        None => {
-                            return invalid_data_error(&format!("Invalid effect entity {index}"));
-                        }
-                        Some(entity) => Rc::clone(entity),
-                    };
+                    let entity = entities.get(&index).ok_or_else(|| {
+                        invalid_data_error(&format!("Invalid effect entity {index}"))
+                    })?;
 
                     // the index has changed with the load
                     effect.entity = Some(entity.borrow().index());
 
                     let new_idx =
                         mgr.borrow_mut()
-                            .add_effect(effect, &entity, Vec::new(), Vec::new());
-                    assert!(new_index == new_idx);
+                            .add_effect(effect, entity, Vec::new(), Vec::new());
+                    assert_eq!(new_index, new_idx);
                     effects.insert(old_index, new_index);
                     continue;
                 }
 
                 if let Some(surface) = effect.surface.clone() {
-                    let area = match areas.get(&surface.area_id) {
-                        None => {
-                            return invalid_data_error(&format!(
-                                "Invalid area ID '{}'",
-                                surface.area_id
-                            ));
-                        }
-                        Some(area) => area,
-                    };
+                    let area = areas.get(&surface.area_id).ok_or_else(|| {
+                        invalid_data_error(&format!("Invalid area ID '{}'", surface.area_id))
+                    })?;
 
                     let new_idx = mgr.borrow_mut().add_surface(
                         effect,
@@ -198,16 +201,15 @@ impl GameState {
                         Vec::new(),
                         Vec::new(),
                     );
-                    assert!(new_index == new_idx);
+                    assert_eq!(new_index, new_idx);
                     effects.insert(old_index, new_index);
                 }
             }
 
             let mut marked = HashMap::new();
             for anim in save_state.anims {
-                match anim.load(&entities, &effects, &mut marked) {
-                    None => (),
-                    Some(anim) => GameState::add_animation(anim),
+                if let Some(anim) = anim.load(&entities, &effects, &mut marked) {
+                    GameState::add_animation(anim);
                 }
             }
 
@@ -222,14 +224,12 @@ impl GameState {
 
             let mut stash = ItemList::default();
             for item_save in save_state.stash {
-                let item = &item_save.item;
-                let item = match Module::create_get_item(&item.id, &item.adjectives) {
-                    None => invalid_data_error(&format!("No item with ID '{}'", item_save.item.id)),
-                    Some(item) => Ok(item),
-                }?;
+                let item = Module::create_get_item(&item_save.item.id, &item_save.item.adjectives)
+                    .ok_or_else(|| {
+                        invalid_data_error(&format!("No item with ID '{}'", item_save.item.id))
+                    })?;
 
                 let item = ItemState::new(item, item_save.item.variant);
-
                 stash.add_quantity(item_save.quantity, item);
             }
 
@@ -356,16 +356,13 @@ impl GameState {
             ));
         }
 
-        let index = match area_state
+        let index = area_state
             .borrow_mut()
             .add_actor(pc, location.clone(), None, true, None)
-        {
-            Err(_) => {
+            .map_err(|_| {
                 error!("Player character starting location must be within bounds and passable.");
-                return invalid_data_error("Unable to add player character at starting location");
-            }
-            Ok(index) => index,
-        };
+                invalid_data_error("Unable to add player character at starting location")
+            })?;
 
         let mgr = GameState::turn_manager();
         let pc_state = mgr.borrow().entity(index);
@@ -375,29 +372,31 @@ impl GameState {
         let mut party = Vec::with_capacity(party_actors.len() + 1);
         party.push(Rc::clone(&pc_state));
 
-        for member in party_actors {
-            let mut member_location = location.clone();
-            transition_handler::find_transition_location(
-                &mut member_location,
-                &member.race.size,
-                &area_state.borrow(),
-            );
+        party.extend(
+            party_actors
+                .into_iter()
+                .map(|member| {
+                    let mut member_location = location.clone();
+                    transition_handler::find_transition_location(
+                        &mut member_location,
+                        &member.race.size,
+                        &area_state.borrow(),
+                    );
 
-            let index =
-                match area_state
-                    .borrow_mut()
-                    .add_actor(member, member_location, None, true, None)
-                {
-                    Err(_) => {
-                        error!("Unable to find start location for party member");
-                        return invalid_data_error("Unable to find start locations.");
-                    }
-                    Ok(index) => index,
-                };
-            let member = mgr.borrow_mut().entity(index);
-            member.borrow_mut().actor.init_turn();
-            party.push(member);
-        }
+                    let index = area_state
+                        .borrow_mut()
+                        .add_actor(member, member_location, None, true, None)
+                        .map_err(|_| {
+                            error!("Unable to find start location for party member");
+                            invalid_data_error("Unable to find start locations.")
+                        })?;
+
+                    let member = mgr.borrow_mut().entity(index);
+                    member.borrow_mut().actor.init_turn();
+                    Ok::<Rc<RefCell<EntityState>>, Error>(member)
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        );
 
         for (flag, value) in &flags {
             pc_state.borrow_mut().set_custom_flag(flag, value);
@@ -621,97 +620,78 @@ impl GameState {
 
     fn add_disabled_party_members() {
         for member in GameState::party() {
-            {
-                let mut member = member.borrow_mut();
-                if member.actor.is_dead() && member.actor.is_disabled() {
-                    member.actor.set_disabled(false);
-                    member.actor.add_hp(1);
-                } else {
-                    continue;
+            let mut member_mut = member.borrow_mut();
+            if !member_mut.actor.is_dead() || !member_mut.actor.is_disabled() {
+                continue;
+            }
+
+            member_mut.actor.set_disabled(false);
+            member_mut.actor.add_hp(1);
+            let location = member_mut.location.clone();
+            let index = member_mut.index();
+            drop(member_mut); // Release the mutable borrow
+
+            if let Some(area_state) = GameState::get_area_state(&location.area_id) {
+                let mut area_state = area_state.borrow_mut();
+                area_state.props_mut().remove_matching(
+                    location.x,
+                    location.y,
+                    &member.borrow().actor.actor.name,
+                );
+                if let Err(e) = area_state.transition_entity_to(&member, index, location) {
+                    warn!("Error re-adding disabled party member: {}", e);
                 }
             }
 
-            let location = member.borrow().location.clone();
-            let area_state = GameState::get_area_state(&location.area_id).unwrap();
-            let index = member.borrow().index();
-            let mut area_state = area_state.borrow_mut();
-            area_state.props_mut().remove_matching(
-                location.x,
-                location.y,
-                &member.borrow().actor.actor.name,
-            );
-            if let Err(e) = area_state.transition_entity_to(&member, index, location) {
-                warn!("Error re-adding disabled party member:");
-                warn!("{}", e);
-            }
-            let mgr = GameState::turn_manager();
-            mgr.borrow_mut().readd_entity(&member);
-
-            let anim = Anim::new_entity_recover(&member);
-            GameState::add_animation(anim);
+            GameState::turn_manager().borrow_mut().readd_entity(&member);
+            GameState::add_animation(Anim::new_entity_recover(&member));
         }
     }
 
     fn remove_disabled_party_members() -> bool {
         let mut notify = false;
         for member in GameState::party().iter() {
-            {
-                let member = member.borrow();
-                if !member.actor.is_dead() {
-                    continue;
+            let member_ref = member.borrow();
+            if member_ref.actor.is_dead() && !member_ref.actor.is_disabled() {
+                drop(member_ref); // Explicitly drop the borrow
+
+                let script = &Module::campaign().on_party_death_script;
+                Script::trigger(&script.id, &script.func, ScriptEntity::from(member));
+
+                let member_ref = member.borrow();
+                if let Some(prop) = &member_ref.actor.actor.race.pc_death_prop {
+                    let area_state = GameState::get_area_state(&member_ref.location.area_id)
+                        .expect("failed to get area state when removing disabled party members");
+                    area_state.borrow_mut().props_mut().add_at(
+                        prop,
+                        member_ref.location.x,
+                        member_ref.location.y,
+                        member_ref.actor.is_disabled(),
+                        Some(member_ref.actor.actor.name.to_string()),
+                    );
                 }
-                if member.actor.is_disabled() {
-                    continue;
-                }
+                notify = true;
             }
-
-            let script = &Module::campaign().on_party_death_script;
-            Script::trigger(&script.id, &script.func, ScriptEntity::from(member));
-
-            {
-                let member = member.borrow();
-                let prop = match &member.actor.actor.race.pc_death_prop {
-                    None => continue,
-                    Some(ref prop) => Rc::clone(prop),
-                };
-
-                let area_state = GameState::get_area_state(&member.location.area_id).unwrap();
-                let x = member.location.x;
-                let y = member.location.y;
-                let name = member.actor.actor.name.to_string();
-                let enabled = member.actor.is_disabled();
-                area_state
-                    .borrow_mut()
-                    .props_mut()
-                    .add_at(&prop, x, y, enabled, Some(name));
-            }
-            notify = true;
         }
 
         STATE.with(|state| {
             let mut state = state.borrow_mut();
             let state = state.as_mut().unwrap();
 
-            let pc = Rc::clone(&state.party[0]); // don't ever remove the PC
+            let pc = Rc::clone(&state.party[0]);
             state.party.retain(|e| {
-                if Rc::ptr_eq(e, &pc) {
-                    return true;
-                }
-                let actor = &e.borrow().actor;
-                !actor.is_dead() || actor.is_disabled()
+                Rc::ptr_eq(e, &pc) || !e.borrow().actor.is_dead() || e.borrow().actor.is_disabled()
             });
             state.selected.retain(|e| !e.borrow().actor.is_dead());
 
             if notify {
                 info!("Removed or Disabled a dead party member; notifying listeners");
                 state.party_death_listeners.notify(&state.party);
-
-                let entity = state.selected.first().map(Rc::clone);
-                state.party_listeners.notify(&entity);
-                true
-            } else {
-                false
+                state
+                    .party_listeners
+                    .notify(&state.selected.first().map(Rc::clone));
             }
+            notify
         })
     }
 
@@ -842,14 +822,10 @@ impl GameState {
     fn setup_area_state(area_id: &str) -> Result<Rc<RefCell<AreaState>>, Error> {
         debug!("Setting up area state from {}", &area_id);
 
-        let area = Module::area(area_id);
-        let area = match area {
-            Some(a) => a,
-            None => {
-                error!("Area '{}' not found", &area_id);
-                return Err(Error::new(ErrorKind::NotFound, "Unable to create area."));
-            }
-        };
+        let area = Module::area(area_id).ok_or_else(|| {
+            error!("Area '{}' not found", &area_id);
+            Error::new(ErrorKind::NotFound, "Unable to create area.")
+        })?;
 
         let state = AreaState::new(area, None)?;
         let area_state = Rc::new(RefCell::new(state));

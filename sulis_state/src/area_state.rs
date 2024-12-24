@@ -139,10 +139,8 @@ impl AreaState {
     }
 
     pub fn load(id: &str, save: AreaSaveState) -> Result<AreaState, Error> {
-        let area = match Module::area(id) {
-            None => invalid_data_error(&format!("Unable to find area '{id}'")),
-            Some(area) => Ok(area),
-        }?;
+        let area = Module::area(id)
+            .ok_or_else(|| invalid_data_error(&format!("Unable to find area '{id}'")))?;
 
         let mut area_state = AreaState::new(area, Some(save.seed))?;
 
@@ -165,7 +163,7 @@ impl AreaState {
 
         for (index, trigger_save) in save.triggers.into_iter().enumerate() {
             if index >= area_state.area.area.triggers.len() {
-                return invalid_data_error("Too many triggers defined in save");
+                return Err(invalid_data_error("Too many triggers defined in save"));
             }
 
             let trigger_state = TriggerState {
@@ -177,6 +175,7 @@ impl AreaState {
 
         area_state.add_transitions_from_area();
 
+        // area_state.merchants.extend(save.merchants.iter().map(|m| MerchantState::load(*m)));
         for merchant_save in save.merchants {
             area_state
                 .merchants
@@ -185,7 +184,7 @@ impl AreaState {
 
         Ok(area_state)
     }
-
+    
     pub fn props(&self) -> &PropHandler {
         &self.props
     }
@@ -937,7 +936,9 @@ impl AreaState {
         let y = location.y;
 
         if !self.area.area.coords_valid(x, y) {
-            return invalid_data_error(&format!("entity location is out of bounds: {x},{y}"));
+            return Err(invalid_data_error(&format!(
+                "entity location is out of bounds: {x},{y}"
+            )));
         }
 
         let entities_to_ignore = vec![entity.borrow().index()];

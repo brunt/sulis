@@ -86,7 +86,7 @@ impl GeneratedArea {
             let encounter = match Module::encounter(&builder.id) {
                 None => {
                     warn!("No encounter '{}' found", builder.id);
-                    return unable_to_create_error("area", &area.id);
+                    return Err(unable_to_create_error("area", &area.id));
                 }
                 Some(enc) => enc,
             };

@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU General Public License
 //  along with Sulis.  If not, see <http://www.gnu.org/licenses/>
 
-use std::cmp::max;
 use std::collections::HashMap;
 use std::{
     fmt,
@@ -179,18 +178,18 @@ impl Rules {
 
     pub fn validate(&self) -> Result<(), Error> {
         if self.hour_names.len() != self.hours_per_day as usize {
-            return invalid_data_error(&format!(
+            return Err(invalid_data_error(&format!(
                 "Must specify '{}' hours names to match number of hours",
                 self.hours_per_day
-            ));
+            )));
         }
 
         for (_, colors) in self.area_colors.iter() {
             if colors.len() != self.hours_per_day as usize {
-                return invalid_data_error(&format!(
+                return Err(invalid_data_error(&format!(
                     "Must specify '{}' hours for each area_colors.",
                     self.hours_per_day
-                ));
+                )));
             }
         }
 
@@ -277,7 +276,7 @@ impl Rules {
             let resistance = (100 - resistance.amount(kind)) as f32 / 100.0;
             let amount = damage.roll() as f32 * multiplier * resistance;
 
-            let armor = max(0, armor.amount(kind) - damage.ap as i32) as u32;
+            let armor = 0.max(armor.amount(kind) - damage.ap as i32) as u32;
             let armor_max = self.armor_damage_reduction_cap(armor) as f32 * amount / 100.0;
             let armor = armor as f32;
 

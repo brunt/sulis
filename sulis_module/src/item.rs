@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU General Public License
 //  along with Sulis.  If not, see <http://www.gnu.org/licenses/>
 
-use std::cmp;
 use std::collections::hash_map::Iter;
 use std::collections::HashMap;
 use std::io::Error;
@@ -105,13 +104,10 @@ fn build_hash_map(
 }
 
 fn read_image(image_id: &str, id: &str) -> Result<Rc<dyn Image>, Error> {
-    match ResourceSet::image(image_id) {
-        None => {
-            warn!("No image found for image '{}'", image_id);
-            unable_to_create_error("item", id)
-        }
-        Some(image) => Ok(image),
-    }
+    ResourceSet::image(image_id).ok_or_else(|| {
+        warn!("No image found for image '{}'", image_id);
+        unable_to_create_error(image_id, id)
+    })
 }
 
 impl Item {
@@ -175,64 +171,65 @@ impl Item {
             if let Some(attack) = &equippable.attack {
                 if attack.damage.kind.is_none() {
                     warn!("Kind must be specified for attack damage.");
-                    return unable_to_create_error("item", &builder.id);
+                    return Err(unable_to_create_error("item", &builder.id));
                 }
             }
         }
 
-        let usable = match builder.usable {
-            None => None,
-            Some(usable) => {
-                if !module.scripts.contains_key(&usable.script) {
-                    warn!("No script found with id '{}'", usable.script);
-                    return unable_to_create_error("item", &builder.id);
-                };
-
-                Some(Usable {
-                    script: usable.script,
-                    consumable: usable.consumable,
-                    duration: usable.duration,
-                    ap: usable.ap,
-                    short_description: usable.short_description,
-                    ai: usable.ai,
-                    use_in_slot: usable.use_in_slot,
-                })
+        let usable = builder.usable.as_ref().and_then(|usable| {
+            if !module.scripts.contains_key(&usable.script) {
+                warn!("No script found with id '{}'", usable.script);
+                return None;
             }
-        };
+            Some(Usable {
+                script: usable.script.clone(),
+                consumable: usable.consumable,
+                duration: usable.duration.clone(),
+                ap: usable.ap,
+                short_description: usable.short_description.clone(),
+                ai: usable.ai.clone(),
+                use_in_slot: usable.use_in_slot,
+            })
+        });
 
-        let prereqs = match builder.prereqs {
-            None => None,
-            Some(list) => Some(PrereqList::new(list)?),
-        };
+        let prereqs = builder.prereqs;
+        let prereqs = prereqs.map(PrereqList::new).transpose()?;
 
-        let mut adjectives = Vec::new();
-        for adj_id in builder.adjectives {
-            let adjective = match module.item_adjectives.get(&adj_id) {
-                None => {
-                    warn!("No item adjective found with id '{}'", adj_id);
-                    return unable_to_create_error("item", &builder.id);
-                }
-                Some(adj) => Rc::clone(adj),
-            };
-            adjectives.push(adjective);
-        }
+        let adjectives: Result<Vec<_>, _> = builder
+            .adjectives
+            .iter()
+            .map(|adj_id| {
+                module
+                    .item_adjectives
+                    .get(adj_id)
+                    .ok_or_else(|| {
+                        warn!("No item adjective found with id '{}'", adj_id);
+                        unable_to_create_error("item", &builder.id)
+                    })
+                    .map(Rc::clone)
+            })
+            .collect();
 
         let icon = read_image(&builder.icon, &builder.id)?;
         let images = build_hash_map(&builder.id, builder.image)?;
         let alt_images = build_hash_map(&builder.id, builder.alternate_image)?;
 
-        let mut variants = Vec::new();
-        for variant in builder.variants {
-            let icon = read_image(&variant.icon, &builder.id)?;
-            let image = build_hash_map(&builder.id, variant.image)?;
-            let alternate_image = build_hash_map(&builder.id, variant.alternate_image)?;
-            variants.push(Variant {
-                image,
-                alternate_image,
-                icon,
-            });
-        }
+        let variants: Result<Vec<_>, _> = builder
+            .variants
+            .into_iter()
+            .map(|variant| {
+                let icon = read_image(&variant.icon, &builder.id)?;
+                let image = build_hash_map(&builder.id, variant.image)?;
+                let alternate_image = build_hash_map(&builder.id, variant.alternate_image)?;
+                Ok::<Variant, Error>(Variant {
+                    image,
+                    alternate_image,
+                    icon,
+                })
+            })
+            .collect();
 
+        let adjectives = adjectives?;
         let (equippable, value, prereqs) = apply_adjectives(
             &prereqs,
             &builder.equippable,
@@ -258,7 +255,7 @@ impl Item {
             original_equippable: builder.equippable,
             builder_adjectives: adjectives,
             added_adjectives: Vec::new(),
-            variants,
+            variants: variants?,
         })
     }
 
@@ -275,31 +272,23 @@ impl Item {
     }
 
     pub fn meets_prereqs(&self, actor: &Rc<Actor>) -> bool {
-        match self.prereqs {
-            None => true,
-            Some(ref prereqs) => prereqs.meets(actor),
-        }
+        self.prereqs
+            .as_ref()
+            .map_or(true, |prereqs| prereqs.meets(actor))
     }
 
     pub fn icon(&self, variant: Option<usize>) -> Rc<dyn Image> {
-        Rc::clone(match variant {
-            None => &self.icon,
-            Some(idx) => &self.variants[idx].icon,
-        })
+        Rc::clone(variant.map_or(&self.icon, |idx| &self.variants[idx].icon))
     }
 
     pub fn alt_image_iter(&self, variant: Option<usize>) -> Iter<ImageLayer, Rc<dyn Image>> {
-        match variant {
-            None => self.alternate_image.iter(),
-            Some(idx) => self.variants[idx].alternate_image.iter(),
-        }
+        variant.map_or(self.alternate_image.iter(), |idx| {
+            self.variants[idx].alternate_image.iter()
+        })
     }
 
     pub fn image_iter(&self, variant: Option<usize>) -> Iter<ImageLayer, Rc<dyn Image>> {
-        match variant {
-            None => self.image.iter(),
-            Some(idx) => self.variants[idx].image.iter(),
-        }
+        variant.map_or(self.image.iter(), |idx| self.variants[idx].image.iter())
     }
 
     pub fn is_armor(&self) -> bool {
@@ -374,10 +363,7 @@ fn apply_adjectives(
             .apply_modifiers(penalty_modifier, bonus_modifier);
     }
 
-    let value = cmp::max(
-        0,
-        (value as f32 * value_modifier).round() as i32 + value_add,
-    );
+    let value = 0.max((value as f32 * value_modifier).round() as i32 + value_add);
 
     (equippable, value, prereqs)
 }

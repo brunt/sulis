@@ -101,39 +101,38 @@ pub struct Campaign {
 
 impl Campaign {
     pub fn new(builder: CampaignBuilder) -> Result<Campaign, Error> {
-        let backstory_conversation = match Module::conversation(&builder.backstory_conversation) {
-            None => {
+        let backstory_conversation = Module::conversation(&builder.backstory_conversation)
+            .ok_or_else(|| {
                 warn!(
                     "Backstory conversation '{}' not found",
                     &builder.backstory_conversation
                 );
-                return unable_to_create_error("module", &builder.name);
-            }
-            Some(convo) => convo,
-        };
+                unable_to_create_error("module", &builder.name)
+            })?;
 
-        let mut locations = Vec::new();
-        for (id, location) in builder.world_map.locations {
-            let image = match ResourceSet::image(&location.icon) {
-                None => {
+        let locations = builder
+            .world_map
+            .locations
+            .into_iter()
+            .map(|(id, location)| {
+                let icon = ResourceSet::image(&location.icon).ok_or_else(|| {
                     warn!("Invalid image for '{}': '{}'", id, location.icon);
-                    return unable_to_create_error("module", &builder.name);
-                }
-                Some(img) => img,
-            };
+                    unable_to_create_error("module", &builder.name)
+                })?;
 
-            locations.push(WorldMapLocation {
-                id,
-                name: location.name,
-                icon: image,
-                position: location.position,
-                initially_enabled: location.initially_enabled,
-                initially_visible: location.initially_visible,
-                linked_area: location.linked_area,
-                linked_area_pos: location.linked_area_pos,
-                travel_times: location.travel_times,
-            });
-        }
+                Ok::<WorldMapLocation, Error>(WorldMapLocation {
+                    id,
+                    name: location.name,
+                    icon,
+                    position: location.position,
+                    initially_enabled: location.initially_enabled,
+                    initially_visible: location.initially_visible,
+                    linked_area: location.linked_area,
+                    linked_area_pos: location.linked_area_pos,
+                    travel_times: location.travel_times,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Campaign {
             group: builder.group,

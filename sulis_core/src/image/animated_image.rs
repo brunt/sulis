@@ -37,40 +37,32 @@ impl AnimatedImage {
         builder: AnimatedImageBuilder,
         images: &HashMap<String, Rc<dyn Image>>,
     ) -> Result<Rc<dyn Image>, Error> {
-        let mut images_vec = Vec::new();
-
         if builder.states.is_empty() {
-            return invalid_data_error("Animated image must have 1 or more sub images.");
+            return Err(invalid_data_error(
+                "Animated image must have 1 or more sub images.",
+            ));
         }
 
+        let mut images_vec = Vec::new();
         let mut size: Option<Size> = None;
-        for (state_str, image_id) in builder.states {
-            // check that the state string exists
-            let state = AnimationState::parse(&state_str)?;
 
-            let image = match images.get(&image_id) {
-                None => {
-                    return invalid_data_error(&format!(
-                        "Unable to locate sub \
-                         image '{image_id}'"
+        for (state_str, image_id) in builder.states {
+            let state = AnimationState::parse(&state_str)?;
+            let image = images.get(&image_id).ok_or_else(|| {
+                invalid_data_error(&format!("Unable to locate sub image '{image_id}'"))
+            })?;
+
+            if let Some(ref s) = size {
+                if *s != *image.get_size() {
+                    return Err(invalid_data_error(
+                        "All images in an animated image must have the same size.",
                     ));
                 }
-                Some(image) => Rc::clone(image),
-            };
-
-            match size {
-                None => size = Some(*image.get_size()),
-                Some(ref size) => {
-                    if *size != *image.get_size() {
-                        return invalid_data_error(
-                            "All images in an animated image \
-                             must have the same size.",
-                        );
-                    }
-                }
+            } else {
+                size = Some(*image.get_size());
             }
 
-            images_vec.push((state, image));
+            images_vec.push((state, Rc::clone(image)));
         }
 
         images_vec.sort_unstable_by(|a, b| a.0.cmp(&b.0));

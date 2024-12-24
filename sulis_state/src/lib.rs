@@ -159,38 +159,35 @@ pub struct WorldMapState {
 impl WorldMapState {
     fn new() -> WorldMapState {
         let campaign = Module::campaign();
-        let map = &campaign.world_map;
-
-        let mut locations = HashMap::new();
-        for location in map.locations.iter() {
-            locations.insert(
-                location.id.clone(),
-                WorldMapLocationState {
-                    visible: location.initially_visible,
-                    enabled: location.initially_enabled,
-                },
-            );
+        WorldMapState {
+            locations: campaign
+                .world_map
+                .locations
+                .iter()
+                .map(|location| {
+                    (
+                        location.id.clone(),
+                        WorldMapLocationState {
+                            visible: location.initially_visible,
+                            enabled: location.initially_enabled,
+                        },
+                    )
+                })
+                .collect(),
         }
-
-        WorldMapState { locations }
     }
 
     fn load(&mut self) {
         let campaign = Module::campaign();
         let map = &campaign.world_map;
 
-        for location in map.locations.iter() {
-            if self.locations.contains_key(&location.id) {
-                continue;
-            }
-
-            self.locations.insert(
-                location.id.clone(),
-                WorldMapLocationState {
+        for location in &map.locations {
+            self.locations
+                .entry(location.id.clone())
+                .or_insert(WorldMapLocationState {
                     visible: location.initially_visible,
                     enabled: location.initially_enabled,
-                },
-            );
+                });
         }
     }
 

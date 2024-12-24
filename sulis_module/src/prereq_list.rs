@@ -67,7 +67,7 @@ impl PrereqList {
 
         for (attr, amount) in b.attributes.as_ref().unwrap_or(&Vec::new()) {
             let cur = attributes.get(attr).unwrap_or(&0);
-            let amount = std::cmp::max(*cur, *amount);
+            let amount = *cur.max(amount);
             attributes.insert(*attr, amount);
         }
 
@@ -79,12 +79,12 @@ impl PrereqList {
             .collect();
         for (id, level) in b.levels.iter() {
             let cur = *levels.get(id).unwrap_or(&0);
-            let level = std::cmp::max(cur, *level);
+            let level = cur.max(*level);
             levels.insert(id.to_string(), level);
         }
 
         // take the max of total level requirements
-        let total_level = std::cmp::max(a.total_level.unwrap_or(0), b.total_level.unwrap_or(0));
+        let total_level = a.total_level.unwrap_or(0).max(b.total_level.unwrap_or(0));
         let total_level = if total_level == 0 {
             None
         } else {

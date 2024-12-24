@@ -39,21 +39,23 @@ pub struct AbilityList {
 
 impl AbilityList {
     pub fn new(builder: AbilityListBuilder, module: &Module) -> Result<AbilityList, Error> {
-        let mut entries = Vec::new();
-        for entry in builder.abilities {
-            let ability = match module.abilities.get(&entry.id) {
-                None => {
-                    warn!("Unable to find ability '{}'", entry.id);
-                    return unable_to_create_error("ability_list", &builder.id);
-                }
-                Some(ability) => Rc::clone(ability),
-            };
-
-            entries.push(Entry {
-                ability,
-                position: entry.position,
-            });
-        }
+        let entries = builder
+            .abilities
+            .into_iter()
+            .map(|entry| {
+                module
+                    .abilities
+                    .get(&entry.id)
+                    .map(|ability| Entry {
+                        ability: Rc::clone(ability),
+                        position: entry.position,
+                    })
+                    .ok_or_else(|| {
+                        warn!("Unable to find ability '{}'", entry.id);
+                        unable_to_create_error("ability_list", &builder.id)
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(AbilityList {
             id: builder.id,

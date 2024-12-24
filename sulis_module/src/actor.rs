@@ -16,6 +16,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::hash::Hash;
 use std::io::Error;
 use std::rc::Rc;
 
@@ -115,6 +116,12 @@ impl Default for Reward {
 pub enum Sex {
     Male,
     Female,
+}
+
+impl Default for Sex {
+    fn default() -> Self {
+        Self::Male
+    }
 }
 
 impl Sex {
@@ -241,13 +248,10 @@ impl Actor {
 
     pub fn new(builder: ActorBuilder, resources: &mut Module) -> Result<Actor, Error> {
         let race = if let Some(race_id) = builder.race {
-            match resources.races.get(&race_id) {
-                None => {
+            resources.races.get(&race_id).ok_or_else(|| {
                     warn!("No match found for race '{}'", race_id);
-                    return unable_to_create_error("actor", &builder.id);
-                }
-                Some(race) => Rc::clone(race),
-            }
+                    unable_to_create_error("actor", &builder.id)
+                }).map(Rc::clone)?
         } else if let Some(race_builder) = builder.inline_race {
             let race = Rc::new(Race::new(race_builder, resources)?);
             trace!("Inserting inline race with ID {} into module.", race.id);
@@ -255,7 +259,7 @@ impl Actor {
             race
         } else {
             warn!("Must specify either race or inline race.");
-            return unable_to_create_error("actor", &builder.id);
+            return Err(unable_to_create_error("actor", &builder.id));
         };
 
         let conversation = match builder.conversation {
@@ -263,80 +267,62 @@ impl Actor {
             Some(ref convo_id) => Some(match resources.conversations.get(convo_id) {
                 None => {
                     warn!("No match found for conversation '{}'", convo_id);
-                    return unable_to_create_error("actor", &builder.id);
+                    return Err(unable_to_create_error("actor", &builder.id));
                 }
                 Some(convo) => Rc::clone(convo),
             }),
         };
 
-        let sex = match builder.sex {
-            None => Sex::Male,
-            Some(sex) => sex,
-        };
+        let sex = builder.sex.unwrap_or_default();
 
-        let mut total_level = 0;
-        let mut levels: Vec<(Rc<Class>, u32)> = Vec::new();
-        for (class_id, level) in builder.levels {
-            let class = match resources.classes.get(&class_id) {
-                None => {
-                    warn!("No match for class '{}'", class_id);
-                    return unable_to_create_error("actor", &builder.id);
-                }
-                Some(class) => Rc::clone(class),
-            };
+        let (total_level, levels): (u32, Vec<(Rc<Class>, u32)>) = builder.levels.iter()
+            .filter_map(|(class_id, &level)| {
+                resources.classes.get(class_id).map(|class| (Rc::clone(class), level))
+                    .or_else(|| {
+                        warn!("No match for class '{}'", class_id);
+                        None
+                    })
+            })
+            .fold((0, Vec::new()), |(total, mut vec), (class, level)| {
+                vec.push((class, level));
+                (total + level, vec)
+            });
 
-            total_level += level;
-            levels.push((class, level));
-        }
-
-        let portrait = match builder.portrait {
-            None => None,
-            Some(ref image) => match ResourceSet::image(image) {
-                None => {
-                    warn!("Unable to find image for portrait '{}'", image);
-                    return unable_to_create_error("actor", &builder.id);
-                }
-                Some(image) => Some(image),
-            },
-        };
+        let portrait = builder.portrait.and_then(|image| {
+            ResourceSet::image(&image).or_else(|| {
+                warn!("Unable to find image for portrait '{}'", image);
+                None
+            })
+        });
 
         let image_layers =
             ImageLayerSet::merge(race.default_images(), sex, builder.images.clone())?;
         let images_list = image_layers.get_list(sex, builder.hair_color, builder.skin_color);
         let image = LayeredImage::new(images_list, builder.hue);
 
-        let reward = match builder.reward {
-            None => None,
-            Some(reward) => {
-                let xp = reward.xp;
-                let loot = match reward.loot {
-                    None => None,
-                    Some(id) => Some(match resources.loot_lists.get(&id) {
-                        None => {
-                            warn!("No loot list found with id '{}'", id);
-                            return unable_to_create_error("actor", &builder.id);
-                        }
-                        Some(list) => Rc::clone(list),
-                    }),
-                };
+        let reward = builder.reward.map(|reward| {
+            let xp = reward.xp;
+            let loot = reward.loot.and_then(|id| {
+                resources.loot_lists.get(&id).ok_or_else(|| {
+                    warn!("No loot list found with id '{}'", id);
+                    unable_to_create_error("actor", &builder.id)
+                }).map(Rc::clone).ok()
+            });
 
-                Some(Reward {
-                    xp,
-                    loot,
-                    loot_chance: reward.loot_chance.unwrap_or(100),
-                })
+            Reward{
+                xp,
+                loot,
+                loot_chance: reward.loot_chance.unwrap_or(100)
             }
-        };
+        });
 
         let mut abilities: Vec<OwnedAbility> = Vec::new();
         for ability_id in builder.abilities {
-            let ability = match resources.abilities.get(&ability_id) {
-                None => {
+            let ability = resources.abilities.get(&ability_id).ok_or_else(|| {
                     warn!("No ability found for '{}'", ability_id);
-                    return unable_to_create_error("actor", &builder.id);
-                }
-                Some(ability) => Rc::clone(ability),
-            };
+                    unable_to_create_error("actor", &builder.id)
+                }).map(Rc::clone)?;
+
 
             let mut upgrade = false;
             for owned_ability in abilities.iter_mut() {
@@ -352,16 +338,12 @@ impl Actor {
             }
         }
 
-        let ai = match builder.ai {
-            None => None,
-            Some(id) => match resources.ai_templates.get(&id) {
-                None => {
-                    warn!("No AI template found with id '{}'", id);
-                    return unable_to_create_error("actor", &builder.id);
-                }
-                Some(ai) => Some(Rc::clone(ai)),
-            },
-        };
+        let ai = builder.ai.and_then(|id| {
+            resources.ai_templates.get(&id).ok_or_else(|| {
+                warn!("No AI template found with id '{}'", id);
+                unable_to_create_error("actor", &builder.id)
+            }).map(Rc::clone).ok()
+        });
 
         Ok(Actor {
             id: builder.id,
@@ -403,33 +385,25 @@ impl Actor {
     }
 
     pub fn ability_level(&self, id: &str) -> Option<u32> {
-        for ability in self.abilities.iter() {
+        self.abilities.iter().find_map(|ability| {
             if ability.ability.id == id {
-                return Some(ability.level);
+                Some(ability.level)
+            } else {
+                None
             }
-        }
-
-        None
+        })
     }
 
     pub fn has_ability_with_id(&self, id: &str) -> bool {
-        for ability in self.abilities.iter() {
-            if ability.ability.id == id {
-                return true;
-            }
-        }
-
-        false
+        self.abilities
+            .iter()
+            .any(|ability| ability.ability.id == id)
     }
 
     pub fn has_ability(&self, other: &Rc<Ability>) -> bool {
-        for ability in self.abilities.iter() {
-            if Rc::ptr_eq(&ability.ability, other) {
-                return true;
-            }
-        }
-
-        false
+        self.abilities
+            .iter()
+            .any(|ability| Rc::ptr_eq(&ability.ability, other))
     }
 
     pub fn base_class(&self) -> Rc<Class> {

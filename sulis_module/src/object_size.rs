@@ -42,16 +42,16 @@ impl ObjectSize {
         let height = builder.height as i32;
         for p in builder.relative_points.into_iter() {
             if p.len() != 2 {
-                return invalid_data_error("Point array length must be equal to 2");
+                return Err(invalid_data_error("Point array length must be equal to 2"));
             }
 
             let x = p[0] as i32;
             let y = p[1] as i32;
             if x < 0 || y < 0 || x >= width || y >= height {
-                return invalid_data_error(&format!(
+                return Err(invalid_data_error(&format!(
                     "Point coords must be within {},{}",
                     builder.width, builder.height
-                ));
+                )));
             }
 
             points.push(Point::new(x, y));
@@ -59,13 +59,10 @@ impl ObjectSize {
 
         let sprite = ResourceSet::sprite(&builder.cursor_image)?;
 
-        let selection_image = match ResourceSet::image(&builder.selection_image) {
-            None => {
-                warn!("Unable to locate image '{}'", builder.selection_image);
-                return unable_to_create_error("object_size", &builder.id);
-            }
-            Some(img) => img,
-        };
+        let selection_image = ResourceSet::image(&builder.selection_image).ok_or_else(|| {
+            warn!("Unable to locate image '{}'", builder.selection_image);
+            unable_to_create_error("object_size", &builder.id)
+        })?;
 
         let diagonal = (((width * width) + (height * height)) as f32).sqrt();
 

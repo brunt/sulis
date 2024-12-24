@@ -62,13 +62,10 @@ impl Color {
     }
 
     pub fn from_string(text: &str) -> Color {
-        match Color::from_str(text) {
-            Ok(color) => color,
-            Err(e) => {
-                warn!("{}", e);
-                WHITE
-            }
-        }
+        Color::from_str(text).unwrap_or_else(|e| {
+            warn!("{}", e);
+            WHITE
+        })
     }
 }
 

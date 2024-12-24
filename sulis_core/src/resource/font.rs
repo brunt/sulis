@@ -45,24 +45,16 @@ pub struct FontChar {
 
 impl Font {
     pub fn get_char_width(&self, c: char) -> u32 {
-        match self.characters.get(&c) {
-            None => 0,
-            Some(font_char) => font_char.x_advance,
-        }
+        self.characters
+            .get(&c)
+            .map_or(0, |font_char| font_char.x_advance)
     }
 
     pub fn get_width(&self, text: &str) -> i32 {
-        let mut width: i32 = 0;
-        for c in text.chars() {
-            let font_char = match self.characters.get(&c) {
-                None => continue,
-                Some(font_char) => font_char,
-            };
-
-            width += font_char.x_advance as i32;
-        }
-
-        width
+        text.chars()
+            .filter_map(|c| self.characters.get(&c))
+            .map(|font_char| font_char.x_advance as i32)
+            .sum()
     }
 
     /// Adds a quad for the given character to the quads list if the
@@ -122,64 +114,121 @@ impl Font {
         pos_x + scale_factor * (font_char.x_advance as f32)
     }
 
+    // pub fn new(builder: FontBuilder) -> Result<Rc<Font>, Error> {
+    //     let mut image = None;
+    //     for dir in builder.source_dirs.iter().rev() {
+    //         let mut filepath = PathBuf::from(dir);
+    //         filepath.push(&builder.src);
+    //
+    //         if let Ok(read_image) = extern_image::open(&filepath) {
+    //             image = Some(read_image);
+    //             break;
+    //         }
+    //     }
+    //
+    //     let image = match image {
+    //         None => {
+    //             warn!(
+    //                 "Unable to read spritesheet source '{}' from any of '{:?}'",
+    //                 builder.src, builder.source_dirs
+    //             );
+    //             return Err(unable_to_create_error("font", &builder.id);
+    //         }
+    //         Some(img) => img,
+    //     };
+    //
+    //     let image = image.to_rgba8();
+    //     let (image_width, image_height) = image.dimensions();
+    //     let image_size = Size::new(image_width as i32, image_height as i32);
+    //
+    //     let mut characters: HashMap<char, FontChar> = HashMap::new();
+    //     for char_builder in builder.characters {
+    //         let id = match char::from_u32(char_builder.id) {
+    //             None => {
+    //                 return Err(invalid_data_error(&format!(
+    //                     "'{}' is not a valid utf8 character.",
+    //                     char_builder.id
+    //                 )));
+    //             }
+    //             Some(c) => c,
+    //         };
+    //
+    //         let position = Point::new(char_builder.xywh[0] as i32, char_builder.xywh[1] as i32);
+    //         let size = Size::new(char_builder.xywh[2] as i32, char_builder.xywh[3] as i32);
+    //
+    //         let image_width = image_size.width as f32;
+    //         let image_height = image_size.height as f32;
+    //         let x_min = (position.x as f32) / image_width;
+    //         let y_min = (image_height - (position.y + size.height) as f32) / image_height;
+    //         let x_max = (position.x + size.width) as f32 / image_width;
+    //         let y_max = (image_height - position.y as f32) / image_height;
+    //         characters.insert(
+    //             id,
+    //             FontChar {
+    //                 size,
+    //                 offset: char_builder.offset,
+    //                 x_advance: char_builder.x_advance,
+    //                 tex_coords: [x_min, y_min, x_min, y_max, x_max, y_min, x_max, y_max],
+    //             },
+    //         );
+    //     }
+    //
+    //     Ok(Rc::new(Font {
+    //         id: builder.id,
+    //         line_height: builder.line_height,
+    //         base: builder.base,
+    //         characters,
+    //         image,
+    //     }))
+    // }
     pub fn new(builder: FontBuilder) -> Result<Rc<Font>, Error> {
-        let mut image = None;
-        for dir in builder.source_dirs.iter().rev() {
-            let mut filepath = PathBuf::from(dir);
-            filepath.push(&builder.src);
-
-            if let Ok(read_image) = extern_image::open(&filepath) {
-                image = Some(read_image);
-                break;
-            }
-        }
-
-        let image = match image {
-            None => {
+        let image = builder
+            .source_dirs
+            .iter()
+            .rev()
+            .find_map(|dir| extern_image::open(PathBuf::from(dir).join(&builder.src)).ok())
+            .ok_or_else(|| {
                 warn!(
                     "Unable to read spritesheet source '{}' from any of '{:?}'",
                     builder.src, builder.source_dirs
                 );
-                return unable_to_create_error("font", &builder.id);
-            }
-            Some(img) => img,
-        };
+                unable_to_create_error("font", &builder.id)
+            })?;
 
         let image = image.to_rgba8();
-        let (image_width, image_height) = image.dimensions();
-        let image_size = Size::new(image_width as i32, image_height as i32);
+        let image_size = Size::new(image.width() as i32, image.height() as i32);
 
-        let mut characters: HashMap<char, FontChar> = HashMap::new();
-        for char_builder in builder.characters {
-            let id = match char::from_u32(char_builder.id) {
-                None => {
-                    return invalid_data_error(&format!(
+        let characters: HashMap<char, FontChar> = builder
+            .characters
+            .into_iter()
+            .map(|char_builder| {
+                let id = char::from_u32(char_builder.id).ok_or_else(|| {
+                    invalid_data_error(&format!(
                         "'{}' is not a valid utf8 character.",
                         char_builder.id
-                    ));
-                }
-                Some(c) => c,
-            };
+                    ))
+                })?;
 
-            let position = Point::new(char_builder.xywh[0] as i32, char_builder.xywh[1] as i32);
-            let size = Size::new(char_builder.xywh[2] as i32, char_builder.xywh[3] as i32);
+                let position = Point::new(char_builder.xywh[0] as i32, char_builder.xywh[1] as i32);
+                let size = Size::new(char_builder.xywh[2] as i32, char_builder.xywh[3] as i32);
 
-            let image_width = image_size.width as f32;
-            let image_height = image_size.height as f32;
-            let x_min = (position.x as f32) / image_width;
-            let y_min = (image_height - (position.y + size.height) as f32) / image_height;
-            let x_max = (position.x + size.width) as f32 / image_width;
-            let y_max = (image_height - position.y as f32) / image_height;
-            characters.insert(
-                id,
-                FontChar {
-                    size,
-                    offset: char_builder.offset,
-                    x_advance: char_builder.x_advance,
-                    tex_coords: [x_min, y_min, x_min, y_max, x_max, y_min, x_max, y_max],
-                },
-            );
-        }
+                let x_min = position.x as f32 / image_size.width as f32;
+                let y_min = (image_size.height - (position.y + size.height)) as f32
+                    / image_size.height as f32;
+                let x_max = (position.x + size.width) as f32 / image_size.width as f32;
+                let y_max = (image_size.height - position.y) as f32 / image_size.height as f32;
+
+                Ok((
+                    id,
+                    FontChar {
+                        size,
+                        offset: char_builder.offset,
+                        x_advance: char_builder.x_advance,
+                        tex_coords: [x_min, y_min, x_min, y_max, x_max, y_min, x_max, y_max],
+                    },
+                ))
+            })
+            .collect::<Result<_, Error>>()?;
 
         Ok(Rc::new(Font {
             id: builder.id,

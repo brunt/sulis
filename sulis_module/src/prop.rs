@@ -61,38 +61,33 @@ pub struct Prop {
 
 impl Prop {
     pub fn new(builder: PropBuilder, module: &Module) -> Result<Prop, Error> {
-        let icon = match ResourceSet::image(&builder.icon) {
-            None => {
-                warn!("No image found for icon '{}'", builder.icon);
-                return unable_to_create_error("prop", &builder.id);
-            }
-            Some(icon) => icon,
-        };
+        let icon = ResourceSet::image(&builder.icon).ok_or_else(|| {
+            warn!("No image found for icon '{}'", builder.icon);
+            unable_to_create_error("prop", &builder.id)
+        })?;
 
-        let image = match ResourceSet::image(&builder.image) {
-            None => {
-                warn!("No image found for image '{}'", builder.image);
-                return unable_to_create_error("prop", &builder.id);
-            }
-            Some(image) => image,
-        };
+        let image = ResourceSet::image(&builder.image).ok_or_else(|| {
+            warn!("No image found for image '{}'", builder.image);
+            unable_to_create_error("prop", &builder.id)
+        })?;
 
-        let size = match module.sizes.get(&builder.size) {
-            None => {
+        let size = module
+            .sizes
+            .get(&builder.size)
+            .ok_or_else(|| {
                 warn!("No size found with id '{}'", builder.size);
-                return unable_to_create_error("prop", &builder.id);
-            }
-            Some(size) => Rc::clone(size),
-        };
+                unable_to_create_error("prop", &builder.id)
+            })
+            .map(Rc::clone)?;
 
         if builder.passable.is_some() && builder.impass.is_some() {
             warn!("Cannot specify both overall passable and impass array");
-            return unable_to_create_error("prop", &builder.id);
+            return Err(unable_to_create_error("prop", &builder.id));
         }
 
         if builder.visible.is_some() && builder.invis.is_some() {
             warn!("Cannot specify both overall visible and invis array");
-            return unable_to_create_error("prop", &builder.id);
+            return Err(unable_to_create_error("prop", &builder.id));
         }
 
         let mut impass = Vec::new();
@@ -136,7 +131,7 @@ impl Prop {
                     Some(loot) => match module.loot_lists.get(&loot) {
                         None => {
                             warn!("Unable to find loot list '{}'", loot);
-                            return unable_to_create_error("prop", &builder.id);
+                            return Err(unable_to_create_error("prop", &builder.id));
                         }
                         Some(loot) => Some(Rc::clone(loot)),
                     },
