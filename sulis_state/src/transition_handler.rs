@@ -147,25 +147,6 @@ fn transition_party(
     }
 }
 
-// pub fn find_transition_location(location: &mut Location, size: &ObjectSize, area: &AreaState) {
-//     let (base_x, base_y) = (location.x, location.y);
-//     let mut search_size = 0;
-//     while search_size < 10 {
-//         for y in -search_size..=search_size {
-//             for x in -search_size..=search_size {
-//                 if area.is_passable_size(size, base_x + x, base_y + y) {
-//                     location.x = base_x + x;
-//                     location.y = base_y + y;
-//                     return;
-//                 }
-//             }
-//         }
-//
-//         search_size += 1;
-//     }
-//
-//     warn!("Unable to find transition locations for all party members");
-// }
 pub fn find_transition_location(location: &mut Location, size: &ObjectSize, area: &AreaState) {
     let (base_x, base_y) = (location.x, location.y);
 
