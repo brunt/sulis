@@ -15,7 +15,6 @@
 //  along with Sulis.  If not, see <http://www.gnu.org/licenses/>
 
 use std::cell::RefCell;
-use std::cmp;
 use std::rc::Rc;
 
 use rlua::{self, Context, UserData, UserDataMethods};
@@ -462,7 +461,7 @@ fn activate(
     let mgr = GameState::turn_manager();
     if take_ap && mgr.borrow().is_combat_active() {
         let bonus = entity.borrow().actor.stats.bonus_ability_action_point_cost;
-        let ap = cmp::max(0, base_ap - bonus);
+        let ap = 0.max(base_ap - bonus);
         entity.borrow_mut().actor.remove_ap(ap as u32);
         entity.borrow_mut().actor.remove_class_stats(&ability);
     }

@@ -183,7 +183,7 @@ impl GameState {
 
                     let new_idx =
                         mgr.borrow_mut()
-                            .add_effect(effect, &entity, Vec::new(), Vec::new());
+                            .add_effect(effect, entity, Vec::new(), Vec::new());
                     assert_eq!(new_index, new_idx);
                     effects.insert(old_index, new_index);
                     continue;
@@ -824,7 +824,7 @@ impl GameState {
 
         let area = Module::area(area_id).ok_or_else(|| {
             error!("Area '{}' not found", &area_id);
-            return Error::new(ErrorKind::NotFound, "Unable to create area.");
+            Error::new(ErrorKind::NotFound, "Unable to create area.")
         })?;
 
         let state = AreaState::new(area, None)?;

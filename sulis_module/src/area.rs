@@ -135,11 +135,11 @@ impl PartialEq for Area {
 
 impl Area {
     pub fn new(mut builder: AreaBuilder) -> Result<Area, Error> {
-        let mut props = Vec::new();
-        for prop_builder in builder.props.iter() {
-            let prop_data = create_prop(prop_builder)?;
-            props.push(prop_data);
-        }
+        let props: Vec<_> = builder
+            .props
+            .iter()
+            .map(create_prop)
+            .collect::<Result<_, _>>()?;
 
         let transitions = Area::read_transitions(
             &builder.transitions,
@@ -152,29 +152,30 @@ impl Area {
         let visibility_tile = ResourceSet::sprite(&builder.visibility_tile)?;
         let explored_tile = ResourceSet::sprite(&builder.explored_tile)?;
 
-        let generator = match builder.generator.take() {
-            None => None,
-            Some(gen) => Some(GeneratorParams::new(gen)?),
-        };
-
-        let ambient_sound = match &builder.ambient_sound {
-            None => None,
-            Some(id) => Some(ResourceSet::sound(id)?),
-        };
-
-        let default_music = match &builder.default_music {
-            None => None,
-            Some(id) => Some(ResourceSet::sound(id)?),
-        };
-
-        let default_combat_music = match &builder.default_combat_music {
-            None => None,
-            Some(id) => Some(ResourceSet::sound(id)?),
-        };
+        let generator = builder
+            .generator
+            .take()
+            .map(GeneratorParams::new)
+            .transpose()?;
+        let ambient_sound = builder
+            .ambient_sound
+            .as_ref()
+            .map(|s: &String| ResourceSet::sound(s))
+            .transpose()?;
+        let default_music = builder
+            .default_music
+            .as_ref()
+            .map(|s: &String| ResourceSet::sound(s))
+            .transpose()?;
+        let default_combat_music = builder
+            .default_combat_music
+            .as_ref()
+            .map(|s: &String| ResourceSet::sound(s))
+            .transpose()?;
 
         Ok(Area {
-            id: builder.id.to_string(),
-            name: builder.name.to_string(),
+            id: builder.id.clone(),
+            name: builder.name.clone(),
             width: builder.width as i32,
             height: builder.height as i32,
             actors: builder.actors.clone(),
@@ -202,127 +203,116 @@ impl Area {
     fn read_triggers_and_encounters(
         builder: &AreaBuilder,
     ) -> Result<(Vec<Trigger>, Vec<EncounterData>), Error> {
-        let mut triggers: Vec<Trigger> = Vec::new();
-        for tbuilder in &builder.triggers {
-            triggers.push(Trigger {
-                kind: tbuilder.kind.clone(),
-                on_activate: tbuilder.on_activate.clone(),
-                initially_enabled: tbuilder.initially_enabled,
-                fire_more_than_once: tbuilder.fire_more_than_once,
-            });
-        }
+        let triggers: Vec<Trigger> = builder
+            .triggers
+            .iter()
+            .map(|t| Trigger {
+                kind: t.kind.clone(),
+                on_activate: t.on_activate.clone(),
+                initially_enabled: t.initially_enabled,
+                fire_more_than_once: t.fire_more_than_once,
+            })
+            .collect();
 
         let mut used_triggers = HashSet::new();
-        let mut encounters = Vec::new();
-        for encounter_builder in builder.encounters.iter() {
-            let encounter = match Module::encounter(&encounter_builder.id) {
-                None => {
+        let encounters: Result<Vec<EncounterData>, Error> = builder
+            .encounters
+            .iter()
+            .map(|encounter_builder| {
+                let encounter = Module::encounter(&encounter_builder.id).ok_or_else(|| {
                     warn!("No encounter '{}' found", &encounter_builder.id);
-                    return unable_to_create_error("area", &builder.id);
-                }
-                Some(encounter) => encounter,
-            };
+                    unable_to_create_error("area", &builder.id)
+                })?;
 
-            let mut encounter_triggers = Vec::new();
-            for (index, trigger) in triggers.iter().enumerate() {
-                match trigger.kind {
-                    TriggerKind::OnEncounterCleared { encounter_location }
-                    | TriggerKind::OnEncounterActivated { encounter_location } => {
-                        if encounter_location == encounter_builder.location {
-                            encounter_triggers.push(index);
+                let encounter_triggers: Vec<usize> = triggers
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, trigger)| match trigger.kind {
+                        TriggerKind::OnEncounterCleared { encounter_location }
+                        | TriggerKind::OnEncounterActivated { encounter_location }
+                            if encounter_location == encounter_builder.location =>
+                        {
                             used_triggers.insert(index);
+                            Some(index)
                         }
-                    }
-                    _ => (),
+                        _ => None,
+                    })
+                    .collect();
+
+                Ok(EncounterData {
+                    encounter,
+                    location: encounter_builder.location,
+                    size: encounter_builder.size,
+                    triggers: encounter_triggers,
+                })
+            })
+            .collect();
+
+        triggers.iter().enumerate().for_each(|(index, trigger)| {
+            if let TriggerKind::OnEncounterCleared { encounter_location }
+            | TriggerKind::OnEncounterActivated { encounter_location } = &trigger.kind
+            {
+                if !used_triggers.contains(&index) {
+                    warn!(
+                        "Invalid encounter trigger at point {:?}",
+                        encounter_location
+                    );
                 }
             }
+        });
 
-            encounters.push(EncounterData {
-                encounter,
-                location: encounter_builder.location,
-                size: encounter_builder.size,
-                triggers: encounter_triggers,
-            });
-        }
-
-        for (index, trigger) in triggers.iter().enumerate() {
-            match trigger.kind {
-                TriggerKind::OnEncounterCleared { encounter_location }
-                | TriggerKind::OnEncounterActivated { encounter_location } => {
-                    if !used_triggers.contains(&index) {
-                        warn!(
-                            "Invalid encounter trigger at point {:?}",
-                            encounter_location
-                        );
-                    }
-                }
-                _ => (),
-            }
-        }
-
-        Ok((triggers, encounters))
+        Ok((triggers, encounters?))
     }
 
     fn read_transitions(input: &[TransitionBuilder], width: i32, height: i32) -> Vec<Transition> {
-        let mut transitions: Vec<Transition> = Vec::new();
-        for (index, t_builder) in input.iter().enumerate() {
-            let image = match ResourceSet::image(&t_builder.image_display) {
-                None => {
+        input
+            .iter()
+            .enumerate()
+            .filter_map(|(index, t_builder)| {
+                let image = ResourceSet::image(&t_builder.image_display).or_else(|| {
                     warn!(
                         "Image '{}' not found for transition.",
                         t_builder.image_display
                     );
-                    continue;
+                    None
+                })?;
+
+                let size = Module::size(&t_builder.size)
+                    .map(|arg0: Rc<ObjectSize>| Rc::clone(&arg0))
+                    .or_else(|| {
+                        warn!("Size '{}' not found for transition.", t_builder.size);
+                        None
+                    })?;
+
+                let p = t_builder.from;
+                if !p.in_bounds(width, height) {
+                    warn!("Transition {} falls outside area bounds", index);
+                    return None;
                 }
-                Some(image) => image,
-            };
-
-            let size = match Module::size(&t_builder.size) {
-                None => {
-                    warn!("Size '{}' not found for transition.", t_builder.size);
-                    continue;
+                p.add(size.width, size.height);
+                if !p.in_bounds(width, height) {
+                    warn!("Transition with size {} falls outside area bounds", index);
+                    return None;
                 }
-                Some(ref size) => Rc::clone(size),
-            };
 
-            let p = t_builder.from;
-            if !p.in_bounds(width, height) {
-                warn!("Transition {} falls outside area bounds", index);
-                continue;
-            }
-            p.add(size.width, size.height);
-            if !p.in_bounds(width, height) {
-                warn!("Transition with size {} falls outside area bounds", index);
-                continue;
-            }
+                debug!(
+                    "Created transition to '{:?}' at {},{}",
+                    t_builder.to, t_builder.from.x, t_builder.from.y
+                );
 
-            debug!(
-                "Created transition to '{:?}' at {},{}",
-                t_builder.to, t_builder.from.x, t_builder.from.y
-            );
-
-            let transition = Transition {
-                from: t_builder.from,
-                to: t_builder.to.clone(),
-                hover_text: t_builder.hover_text.clone(),
-                size,
-                image_display: image,
-            };
-            transitions.push(transition);
-        }
-
-        transitions
+                Some(Transition {
+                    from: t_builder.from,
+                    to: t_builder.to.clone(),
+                    hover_text: t_builder.hover_text.clone(),
+                    size,
+                    image_display: image,
+                })
+            })
+            .collect()
     }
 
     pub fn coords_valid(&self, x: i32, y: i32) -> bool {
-        if x < 0 || y < 0 {
-            return false;
-        }
-        if x >= self.width || y >= self.height {
-            return false;
-        }
-
-        true
+        x >= 0 && y >= 0 && x < self.width && y < self.height
     }
 }
 
@@ -421,25 +411,25 @@ fn entry_index<'a>(
     index: &mut u8,
     entry: &'a Option<String>,
 ) -> Result<u8, Error> {
-    Ok(match entry {
-        None => 255,
+    match entry {
+        None => Ok(255),
         Some(ref id) => {
-            let index = map.entry(id).or_insert_with(|| {
+            let idx = map.entry(id).or_insert_with(|| {
                 let ret_val = *index;
                 *index += 1;
                 ret_val
             });
 
-            if *index > 254 {
+            if *idx > 254 {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
                     "Can only serialize up to 255 wall kinds",
                 ));
             }
 
-            *index
+            Ok(*idx)
         }
-    })
+    }
 }
 
 fn serialize_u8_with_kinds<S>(
@@ -511,39 +501,30 @@ where
 {
     let input = U8WithKinds::deserialize(deserializer)?;
     use sulis_core::serde::de::Error;
+
     let vec_u8 = base64
         .decode(&input.entries)
         .map_err(|err| Error::custom(err.to_string()))?;
 
-    let mut out = Vec::new();
-    if vec_u8.is_empty() {
-        return Ok(out);
+    if vec_u8.len() % 2 != 0 {
+        return Err(Error::custom("Invalid base64 encoding in walls"));
     }
 
-    let mut i = 0;
-    loop {
-        if i + 2 > vec_u8.len() {
-            return Err(Error::custom("Invalid base64 encoding in walls"));
-        }
+    vec_u8
+        .chunks(2)
+        .map(|chunk| {
+            let elev = chunk[1];
+            let index = chunk[0] as usize;
 
-        let elev = vec_u8[i + 1];
-        let index = vec_u8[i] as usize;
-
-        if index == 255 {
-            out.push((elev, None));
-        } else if index >= input.kinds.len() {
-            return Err(Error::custom("Invalid base64 encoding in walls index"));
-        } else {
-            out.push((elev, Some(input.kinds[index].clone())));
-        }
-
-        i += 2;
-        if i == vec_u8.len() {
-            break;
-        }
-    }
-
-    Ok(out)
+            if index == 255 {
+                Ok((elev, None))
+            } else if index >= input.kinds.len() {
+                Err(Error::custom("Invalid base64 encoding in walls index"))
+            } else {
+                Ok((elev, Some(input.kinds[index].clone())))
+            }
+        })
+        .collect()
 }
 
 fn ser_walls<S>(input: &[(u8, Option<String>)], serializer: S) -> Result<S::Ok, S::Error>
@@ -728,10 +709,8 @@ pub struct PropDataBuilder {
 }
 
 pub fn create_prop(builder: &PropDataBuilder) -> Result<PropData, Error> {
-    let prop = match Module::prop(&builder.id) {
-        None => return unable_to_create_error("prop", &builder.id),
-        Some(prop) => prop,
-    };
+    let prop =
+        Module::prop(&builder.id).ok_or_else(|| unable_to_create_error("prop", &builder.id))?;
 
     let location = builder.location;
 

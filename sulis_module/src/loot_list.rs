@@ -115,13 +115,10 @@ impl LootList {
                 "Item adjective and variant may not be specified in loot sub_list entries: '{}'",
                 id
             );
-            return unable_to_create_error("loot_list", builder_id);
+            return Err(unable_to_create_error("loot_list", builder_id));
         }
 
-        let (min_qty, max_qty) = match entry_in.quantity {
-            None => (1, 1),
-            Some(qty) => (qty[0], qty[1]),
-        };
+        let (min_qty, max_qty) = entry_in.quantity.map_or((1, 1), |qty| (qty[0], qty[1]));
 
         Ok(Entry {
             id,
@@ -144,13 +141,10 @@ impl LootList {
     ) -> Result<Entry, Error> {
         if !module.items.contains_key(&id) {
             warn!("Unable to find item '{}'", id);
-            return unable_to_create_error("loot_list", builder_id);
+            return Err(unable_to_create_error("loot_list", builder_id));
         }
 
-        let (min_qty, max_qty) = match entry_in.quantity {
-            None => (1, 1),
-            Some(qty) => (qty[0], qty[1]),
-        };
+        let (min_qty, max_qty) = entry_in.quantity.map_or((1, 1), |qty| (qty[0], qty[1]));
 
         let mut adjective1 = Vec::new();
         let mut adjective1_total_weight = 0;
@@ -161,7 +155,7 @@ impl LootList {
             }
             if !module.item_adjectives.contains_key(&id) {
                 warn!("Unable to find item adjective '{}'", id);
-                return unable_to_create_error("loot_list", builder_id);
+                return Err(unable_to_create_error("loot_list", builder_id));
             }
             adjective1.push((id, weight));
         }
@@ -175,7 +169,7 @@ impl LootList {
             }
             if !module.item_adjectives.contains_key(&id) {
                 warn!("Unable to find item adjective '{}'", id);
-                return unable_to_create_error("loot_list", builder_id);
+                return Err(unable_to_create_error("loot_list", builder_id));
             }
             adjective2.push((id, weight));
         }
@@ -187,13 +181,10 @@ impl LootList {
             if id == "none" {
                 continue;
             }
-            let value = match id.parse() {
-                Ok(val) => val,
-                Err(_) => {
-                    warn!("Variant IDs must be parsable integers: '{}'", id);
-                    return unable_to_create_error("loot_list", builder_id);
-                }
-            };
+            let value = id.parse().map_err(|_| {
+                warn!("Variant IDs must be parsable integers: '{}'", id);
+                unable_to_create_error("loot_list", builder_id)
+            })?;
             variant.push((value, weight));
         }
 

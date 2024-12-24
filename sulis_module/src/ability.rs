@@ -102,39 +102,30 @@ impl PartialEq for Ability {
 
 impl Ability {
     pub fn new(builder: AbilityBuilder, module: &Module) -> Result<Ability, Error> {
-        let icon = match ResourceSet::image(&builder.icon) {
-            None => {
-                warn!("No image found for icon '{}'", builder.icon);
-                return unable_to_create_error("ability", &builder.id);
-            }
-            Some(icon) => icon,
-        };
+        let icon = ResourceSet::image(&builder.icon).ok_or_else(|| {
+            warn!("No image found for icon '{}'", builder.icon);
+            unable_to_create_error("ability", &builder.id)
+        })?;
 
-        let active = match builder.active {
-            None => None,
-            Some(active) => {
+        let active = builder
+            .active
+            .map(|active| {
                 if !module.scripts.contains_key(&active.script) {
                     warn!("No script found with id '{}'", active.script);
-                    return unable_to_create_error("ability", &builder.id);
-                };
+                    return Err(unable_to_create_error("ability", &builder.id));
+                }
 
-                let cooldown = match active.cooldown {
-                    None => match active.duration {
-                        Duration::Rounds(c) => c,
-                        Duration::Mode | Duration::Instant | Duration::Permanent => 0,
-                    },
-                    Some(c) => c,
-                };
+                let cooldown = active.cooldown.unwrap_or(match active.duration {
+                    Duration::Rounds(c) => c,
+                    Duration::Mode | Duration::Instant | Duration::Permanent => 0,
+                });
 
-                let group = match AbilityGroup::new(module, &active.group) {
-                    None => {
-                        warn!("Unable to find ability group '{}'", active.group);
-                        return unable_to_create_error("ability", &builder.id);
-                    }
-                    Some(group) => group,
-                };
+                let group = AbilityGroup::new(module, &active.group).ok_or_else(|| {
+                    warn!("Unable to find ability group '{}'", active.group);
+                    unable_to_create_error("ability", &builder.id)
+                })?;
 
-                Some(Active {
+                Ok(Active {
                     script: active.script,
                     ap: active.ap,
                     duration: active.duration,
@@ -151,13 +142,10 @@ impl Ability {
                     requires_ranged: active.requires_ranged,
                     requires_active_mode: active.requires_active_mode,
                 })
-            }
-        };
+            })
+            .transpose()?;
 
-        let prereqs = match builder.prereqs {
-            None => None,
-            Some(prereqs) => Some(PrereqList::new(prereqs)?),
-        };
+        let prereqs = builder.prereqs.map(PrereqList::new).transpose()?;
 
         let mut bonuses = builder.bonuses.unwrap_or_default();
         bonuses.merge_duplicates();

@@ -54,26 +54,6 @@ pub fn setup() -> Result<()> {
     );
     Ok(())
 }
-// pub fn setup() -> Result<()> {
-//     let start = Instant::now();
-//
-//     SCRIPT_CACHE.with(|cache| {
-//         cache.borrow_mut().clear();
-//         Module::all_scripts().into_iter().for_each(|id| {
-//             let script = get_script_from_id(&id)?;
-//             let mut state = ScriptState::default();
-//             state.load(&id, &script)?;
-//             cache.borrow_mut().insert(id, Rc::new(state));
-//             Ok(())
-//         })
-//     })?;
-//
-//     info!(
-//         "Setup scripts in {:.3} millis",
-//         get_elapsed_millis(start.elapsed())
-//     );
-//     Ok(())
-// }
 
 pub fn set_report_enabled(enabled: bool) {
     REPORTING.with(|r| r.set(enabled));
@@ -88,44 +68,37 @@ fn parse_traceback_line_num(traceback: &str) -> Option<i32> {
         .find_map(|num_str| num_str.parse().ok())
 }
 
-#[allow(clippy::format_push_string)] // performance characteristics of this function are irrelevant
 fn print_nearby_lines(state: &ScriptState, traceback: &str) -> (String, i32) {
-    let mut out = String::new();
-
     let num = match parse_traceback_line_num(traceback) {
-        None => {
-            out.push_str("No traceback available.\n");
-            return (out, 0);
-        }
+        None => return (String::from("No traceback available.\n"), 0),
         Some(num) => num,
     };
 
     let script = match get_script_from_id(&state.id) {
         Err(_) => {
-            out.push_str(&format!(
-                "Unable to find script: {} for traceback.\n",
-                state.id
-            ));
-            return (out, 0);
+            return (
+                format!("Unable to find script: {} for traceback.\n", state.id),
+                0,
+            )
         }
         Ok(script) => script,
     };
 
-    let start_num = std::cmp::max(0, num - 5) as usize;
-    let lines = script.lines().skip(start_num);
-
-    for (i, line) in lines.enumerate() {
-        if i >= 9 {
-            break;
-        }
-
-        if i == 4 {
-            out.push_str(&format!("{:4}", start_num + i + 1));
-        } else {
-            out.push_str("    ");
-        }
-        out.push_str(&format!(" | {line}\n"));
-    }
+    let start_num = 0.max(num - 5) as usize;
+    let out: String = script
+        .lines()
+        .skip(start_num)
+        .take(9)
+        .enumerate()
+        .map(|(i, line)| {
+            let line_num = if i == 4 {
+                format!("{:4}", start_num + i + 1)
+            } else {
+                "    ".to_string()
+            };
+            format!("{} | {}\n", line_num, line)
+        })
+        .collect();
 
     (out, num)
 }
@@ -140,7 +113,7 @@ where
 
         //set up the script if it does not already exist
         if !cache.contains_key(id) {
-            return Err(rlua::Error::ToLuaConversionError {
+            return Err(ToLuaConversionError {
                 from: "String",
                 to: "Script",
                 message: Some(format!("Script '{id}' does not exist")),
@@ -252,22 +225,6 @@ pub fn ability_on_activate(parent: usize, func: String, ability: &Rc<Ability>) -
     exec_func(&script, &func, (parent, ability))
 }
 
-// pub fn ability_on_deactivate(parent: usize, ability: &Rc<Ability>) -> Result<()> {
-//     let script_parent = ScriptEntity::new(parent).try_unwrap()?;
-//     match script_parent.borrow().actor.ability_states.get(&ability.id) {
-//         None => return Ok(()),
-//         Some(state) => {
-//             if !state.is_active_mode() {
-//                 return Ok(());
-//             }
-//         }
-//     }
-//
-//     let script = get_ability_script_id(ability)?;
-//     let parent = ScriptEntity::new(parent);
-//     let ability = ScriptAbility::from(ability);
-//     exec_func(&script, "on_deactivate", (parent, ability))
-// }
 pub fn ability_on_deactivate(parent: usize, ability: &Rc<Ability>) -> Result<()> {
     let script_parent = ScriptEntity::new(parent).try_unwrap()?;
 
@@ -364,15 +321,6 @@ fn get_ability_script_id(ability: &Rc<Ability>) -> Result<String> {
 }
 
 fn get_script_from_id(id: &str) -> Result<String> {
-    // match Module::script(id) {
-    //     None => Err(rlua::Error::ToLuaConversionError {
-    //         from: "&str",
-    //         to: "Script",
-    //         message: Some(format!("No script found with id '{id}'")),
-    //     }),
-    //     Some(script) => Ok(script),
-    // }
-
     Module::script(id).ok_or_else(|| rlua::Error::ToLuaConversionError {
         from: "&str",
         to: "Script",

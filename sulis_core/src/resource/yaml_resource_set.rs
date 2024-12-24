@@ -14,12 +14,11 @@
 //  You should have received a copy of the GNU General Public License
 //  along with Sulis.  If not, see <http://www.gnu.org/licenses/>
 
+use serde_yaml::{self, Value};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Error;
 use std::path::Path;
-
-use serde_yaml::{self, Value};
 
 /// A set of resources that have been parsed into YAML values.  This is built up
 /// by first reading the bottom level "data" layer, then the module layer, then

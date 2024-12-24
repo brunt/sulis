@@ -16,7 +16,7 @@
 
 use std::any::Any;
 use std::cell::{RefCell, RefMut};
-use std::cmp::{self, Ordering};
+use std::cmp::Ordering;
 use std::mem;
 use std::rc::Rc;
 use std::time;
@@ -233,48 +233,45 @@ impl AreaView {
         vis_sprite: &Rc<Sprite>,
         explored_sprite: &Rc<Sprite>,
         area_state: &RefMut<AreaState>,
-        delta_x: i32,
-        delta_y: i32,
+        delta: (i32, i32),
     ) {
         let start_time = time::Instant::now();
         let (max_tile_x, max_tile_y) =
             AreaView::get_texture_cache_max(area_state.area.width, area_state.area.height);
-
         let vis_dist = area_state.area.area.vis_dist;
+
         for pc in GameState::party() {
-            let c_x = pc.borrow().location.x + pc.borrow().size.width / 2;
-            let c_y = pc.borrow().location.y + pc.borrow().size.height / 2;
-            let min_x = cmp::max(0, c_x - vis_dist + if delta_x < 0 { delta_x } else { 0 });
-            let max_x = cmp::min(
-                max_tile_x,
-                1 + c_x + vis_dist + if delta_x > 0 { delta_x } else { 0 },
-            );
-            let min_y = cmp::max(0, c_y - vis_dist + if delta_y < 0 { delta_y } else { 0 });
-            let max_y = cmp::min(
-                max_tile_y,
-                1 + c_y + vis_dist + if delta_y > 0 { delta_y } else { 0 },
-            );
+            let (c_x, c_y) = {
+                let pc = pc.borrow();
+                (
+                    pc.location.x + pc.size.width / 2,
+                    pc.location.y + pc.size.height / 2,
+                )
+            };
+
+            let range = Range {
+                min_x: (c_x - vis_dist + delta.0.min(0)).max(0),
+                max_x: (c_x + vis_dist + delta.0.max(0) + 1).min(max_tile_x),
+                min_y: (c_y - vis_dist + delta.1.min(0)).max(0),
+                max_y: (c_y + vis_dist + delta.1.max(0) + 1).min(max_tile_y),
+            };
 
             let scale = TILE_SIZE as i32;
             renderer.clear_texture_region(
                 VISIBILITY_TEX_ID,
-                min_x * scale,
-                min_y * scale,
-                max_x * scale,
-                max_y * scale,
+                range.min_x * scale,
+                range.min_y * scale,
+                range.max_x * scale,
+                range.max_y * scale,
             );
-            let range = Range {
-                min_x,
-                max_x,
-                min_y,
-                max_y,
-            };
+
             self.draw_vis_to_texture(renderer, vis_sprite, explored_sprite, area_state, range);
-            trace!(
-                "Visibility render to texture time: {}",
-                util::format_elapsed_secs(start_time.elapsed())
-            );
         }
+
+        trace!(
+            "Visibility render to texture time: {}",
+            util::format_elapsed_secs(start_time.elapsed())
+        );
     }
 
     fn draw_vis_to_texture(
@@ -337,8 +334,8 @@ impl AreaView {
     }
 
     fn get_texture_cache_max(width: i32, height: i32) -> (i32, i32) {
-        let x = cmp::min((TILE_CACHE_TEXTURE_SIZE / TILE_SIZE) as i32, width);
-        let y = cmp::min((TILE_CACHE_TEXTURE_SIZE / TILE_SIZE) as i32, height);
+        let x = width.min((TILE_CACHE_TEXTURE_SIZE / TILE_SIZE) as i32);
+        let y = height.min((TILE_CACHE_TEXTURE_SIZE / TILE_SIZE) as i32);
 
         (x, y)
     }
@@ -401,9 +398,9 @@ impl AreaView {
 
         to_draw.sort_by(|a, b| {
             if a.aerial() && !b.aerial() {
-                std::cmp::Ordering::Greater
+                Ordering::Greater
             } else if !a.aerial() && b.aerial() {
-                std::cmp::Ordering::Less
+                Ordering::Less
             } else {
                 let a_y = a.location().y + a.size().height;
                 let a_x = a.location().x + a.size().width / 2;
@@ -768,8 +765,7 @@ impl WidgetKind for AreaView {
                     &state.area.area.visibility_tile,
                     &state.area.area.explored_tile,
                     &state,
-                    delta_x,
-                    delta_y,
+                    (delta_x, delta_y),
                 );
             }
             PCVisRedraw::Not => (),

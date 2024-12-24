@@ -752,8 +752,8 @@ impl AreaModel {
         for (layer_id, tiles) in self.tiles.iter() {
             layers.push(layer_id.to_string());
             for &(position, ref tile) in tiles.iter() {
-                width = cmp::max(width, position.x + tile.width);
-                height = cmp::max(height, position.y + tile.height);
+                width = width.max(position.x + tile.width);
+                height = height.max(position.y + tile.height);
 
                 if position.x >= MAX_AREA_SIZE || position.y >= MAX_AREA_SIZE {
                     continue;
@@ -762,8 +762,8 @@ impl AreaModel {
                 tiles_vec.push(vec![position.x as u16, position.y as u16]);
             }
         }
-        width = cmp::min(width, MAX_AREA_SIZE);
-        height = cmp::min(height, MAX_AREA_SIZE);
+        width = width.min(MAX_AREA_SIZE);
+        height = height.min(MAX_AREA_SIZE);
         let entity_layer = self.config.area.entity_layer;
 
         trace!("Saving actors.");

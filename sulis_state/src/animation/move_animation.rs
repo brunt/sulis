@@ -15,7 +15,6 @@
 //  along with Sulis.  If not, see <http://www.gnu.org/licenses/>
 
 use std::cell::{Cell, RefCell};
-use std::cmp;
 use std::rc::Rc;
 
 use crate::{animation::particle_generator::Param, animation::Anim, EntityState, GameState};
@@ -57,10 +56,7 @@ pub(in crate::animation) fn update(
         return;
     }
 
-    let frame_index = cmp::min(
-        (millis / model.frame_time_millis) as usize,
-        model.path.len() - 1,
-    );
+    let frame_index = ((millis / model.frame_time_millis) as usize).min(model.path.len() - 1);
     let frame_frac = (millis % model.frame_time_millis) as f32 / model.frame_time_millis as f32;
 
     if frame_index != model.path.len() - 1 {

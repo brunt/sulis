@@ -68,22 +68,16 @@ impl Class {
         for (level, upgrades_builder) in builder.upgrades {
             if level == 0 {
                 warn!("Invalid upgrade level 0");
-                return unable_to_create_error("class", &builder.id);
+                return Err(unable_to_create_error("class", &builder.id));
             }
             max_level = level.max(max_level);
 
-            let mut ability_choices = Vec::new();
-            for ability_list_id in upgrades_builder.ability_choices {
-                let ability_list = match module.ability_lists.get(&ability_list_id) {
-                    None => {
-                        warn!("Unable to find ability list '{}'", ability_list_id);
-                        return unable_to_create_error("class", &builder.id);
-                    }
-                    Some(ability_list) => Rc::clone(ability_list),
-                };
-
-                ability_choices.push(ability_list);
-            }
+            let ability_choices = upgrades_builder.ability_choices.iter().map(|ability_list_id| {
+                module.ability_lists.get(ability_list_id).ok_or_else(|| {
+                    warn!("Unable to find ability list '{}'", ability_list_id);
+                    unable_to_create_error("class", &builder.id)
+                }).map(Rc::clone)
+            }).collect::<Result<Vec<_>, _>>()?;
 
             let group_uses_per_day = upgrades_builder.group_uses_per_day;
             let group_uses_per_encounter = upgrades_builder.group_uses_per_encounter;
@@ -92,7 +86,7 @@ impl Class {
             for id in stats.keys() {
                 if !builder.stats.iter().any(|stat| id == &stat.id) {
                     warn!("Unable to find stat for class upgrades: '{}'", id);
-                    return unable_to_create_error("class", &builder.id);
+                    return Err(unable_to_create_error("class", &builder.id));
                 }
             }
 
@@ -108,43 +102,32 @@ impl Class {
 
         if upgrades.is_empty() {
             warn!("Each class must specify upgrades for at least 1 level.");
-            return unable_to_create_error("class", &builder.id);
+            return Err(unable_to_create_error("class", &builder.id));
         }
 
         let max_level_upgrades = upgrades.get(&max_level).unwrap().clone();
 
         if builder.kits.is_empty() {
             warn!("Each class must specify at least one kit.");
-            return unable_to_create_error("class", &builder.id);
+            return Err(unable_to_create_error("class", &builder.id));
         }
 
-        let mut abilities = Vec::new();
-        for ability_id in builder.starting_abilities {
-            let ability = match module.abilities.get(&ability_id) {
-                None => {
-                    warn!("Unable to find ability '{}'", ability_id);
-                    return unable_to_create_error("class", &builder.id);
-                }
-                Some(ability) => Rc::clone(ability),
-            };
+        let abilities = builder.starting_abilities.iter().map(|ability_id| {
+            module.abilities.get(ability_id).ok_or_else(|| {
+                warn!("Unable to find ability '{}'", ability_id);
+                unable_to_create_error("class", &builder.id)
+            }).map(Rc::clone)
+        }).collect::<Result<Vec<_>, _>>()?;
 
-            abilities.push(ability);
-        }
 
         let mut kits = Vec::new();
         for kit_builder in builder.kits {
-            let mut abilities = Vec::new();
-            for ability_id in kit_builder.starting_abilities {
-                let ability = match module.abilities.get(&ability_id) {
-                    None => {
-                        warn!("Unable to find ability '{}'", ability_id);
-                        return unable_to_create_error("class", &builder.id);
-                    }
-                    Some(ability) => Rc::clone(ability),
-                };
-
-                abilities.push(ability);
-            }
+            let abilities = kit_builder.starting_abilities.iter().map(|ability_id| {
+                module.abilities.get(ability_id).ok_or_else(|| {
+                    warn!("Unable to find ability '{}'", ability_id);
+                    unable_to_create_error("class", &builder.id)
+                }).map(Rc::clone)
+            }).collect::<Result<Vec<_>, _>>()?;
 
             kits.push(Kit {
                 name: kit_builder.name,

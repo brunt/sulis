@@ -16,7 +16,6 @@
 
 use std::any::Any;
 use std::cell::RefCell;
-use std::cmp;
 use std::rc::Rc;
 
 use crate::io::{event::ClickKind, GraphicsRenderer, InputActionKind};
@@ -252,45 +251,39 @@ impl Scrollbar {
     }
 
     fn adjust_cur_pos(&mut self, amount: i32) {
-        self.cur_pos += amount;
-
-        if self.cur_pos < self.min_pos {
-            self.cur_pos = self.min_pos
-        } else if self.cur_pos > self.max_pos {
-            self.cur_pos = self.max_pos
-        }
+        self.cur_pos = (self.cur_pos + amount).clamp(self.min_pos, self.max_pos);
     }
 
     fn compute_min_max_x(&mut self, widget: &Widget) {
-        let mut max_x = 0;
-
-        for child in &widget.children {
-            let child = &child.borrow();
-            max_x = cmp::max(max_x, child.state.left() + child.state.width());
-        }
+        let max_x = widget
+            .children
+            .iter()
+            .map(|child| {
+                let child = child.borrow();
+                child.state.left() + child.state.width()
+            })
+            .max()
+            .unwrap_or(0);
 
         let state = &widget.state;
-        self.max_pos = max_x - self.content_size + state.border().horizontal() - state.left();
-        if self.max_pos < self.min_pos {
-            self.max_pos = self.min_pos
-        }
+        self.max_pos = (max_x - self.content_size + state.border().horizontal() - state.left())
+            .max(self.min_pos);
     }
 
     fn compute_min_max_y(&mut self, widget: &Widget) {
-        let mut max_y = 0;
-
-        for child in &widget.children {
-            let child = &child.borrow();
-
-            max_y = cmp::max(max_y, child.state.top() + child.state.height());
-        }
+        let max_y = widget
+            .children
+            .iter()
+            .map(|child| {
+                let child = child.borrow();
+                child.state.top() + child.state.height()
+            })
+            .max()
+            .unwrap_or(0);
 
         let state = &widget.state;
-        self.max_pos = max_y - self.content_size + state.border().vertical() - state.top();
-
-        if self.max_pos < self.min_pos {
-            self.max_pos = self.min_pos
-        }
+        self.max_pos =
+            (max_y - self.content_size + state.border().vertical() - state.top()).max(self.min_pos);
     }
 
     fn drag_thumb(&mut self, scrollable_size: i32, delta: f32) {

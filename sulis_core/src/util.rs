@@ -75,10 +75,7 @@ pub struct ReproducibleRandom {
 impl ReproducibleRandom {
     pub fn new(seed: Option<u128>) -> ReproducibleRandom {
         // TODO only seed with u64 for now because serde_yaml doesn't serialize u128 correctly
-        let seed = match seed {
-            Some(s) => s,
-            None => rand::thread_rng().gen::<u64>() as u128,
-        };
+        let seed = seed.unwrap_or_else(|| rand::thread_rng().gen::<u64>() as u128);
 
         ReproducibleRandom {
             seed,
@@ -326,11 +323,11 @@ pub fn invalid_data_error(str: &str) -> Error {
     Error::new(ErrorKind::InvalidData, str)
 }
 
-pub fn unable_to_create_error<T>(kind: &str, id: &str) -> Result<T, Error> {
-    Err(Error::new(
+pub fn unable_to_create_error(kind: &str, id: &str) -> Error {
+    Error::new(
         ErrorKind::InvalidData,
         format!("Unable to create {kind} '{id}'"),
-    ))
+    )
 }
 
 /// Helper function to return the number of milliseconds elapsed in

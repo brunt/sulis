@@ -142,7 +142,7 @@ impl EntityState {
             }
         };
 
-        let unique_id = unique_id.unwrap_or_else(|| "".to_string());
+        let unique_id = unique_id.unwrap_or_default();
 
         debug!("Creating new entity state for {}", actor.id);
         let size = Rc::clone(&actor.race.size);

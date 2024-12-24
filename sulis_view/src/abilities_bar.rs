@@ -16,7 +16,6 @@
 
 use std::any::Any;
 use std::cell::RefCell;
-use std::cmp;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -376,7 +375,7 @@ impl GroupPane {
         }
 
         let cols = (items_count as f32 / self.vertical_count as f32).ceil() as u32;
-        let cols = cmp::max(cols, self.min_horizontal_count) as i32;
+        let cols = cols.max(self.min_horizontal_count) as i32;
         let width = cols * self.grid_width as i32 + self.grid_border as i32;
         widget.state.set_size(Size::new(width, height));
     }

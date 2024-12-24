@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU General Public License
 //  along with Sulis.  If not, see <http://www.gnu.org/licenses/>
 
-use std::cmp;
 use std::rc::Rc;
 
 use serde::Deserialize;
@@ -60,7 +59,7 @@ impl LayoutKind {
                 LayoutKind::width_recursive(&child.borrow_mut(), widget.state.inner_width());
             let height =
                 LayoutKind::height_recursive(&child.borrow_mut(), widget.state.inner_height());
-            max_width = cmp::max(max_width, width);
+            max_width = max_width.max(width);
             child.borrow_mut().state.set_size(Size::new(width, height));
 
             if current_y + height + theme.layout_spacing.bottom > widget.state.inner_bottom() + 1 {
@@ -89,7 +88,7 @@ impl LayoutKind {
                 LayoutKind::width_recursive(&child.borrow_mut(), widget.state.inner_width());
             let height =
                 LayoutKind::height_recursive(&child.borrow_mut(), widget.state.inner_height());
-            max_height = cmp::max(max_height, height);
+            max_height = max_height.max(height);
             child.borrow_mut().state.set_size(Size::new(width, height));
 
             if current_x + width + theme.layout_spacing.right > widget.state.inner_right() + 1 {
@@ -157,14 +156,14 @@ impl LayoutKind {
             Center => (widget.state.inner_left() + widget.state.inner_right() - size.width) / 2,
             Max => widget.state.inner_right() - size.width,
             Custom => child.state.position().x,
-            Mouse => cmp::min(Cursor::get_x(), Config::ui_width() - size.width),
+            Mouse => Cursor::get_x().min(Config::ui_width() - size.width),
         };
         let y = match theme.relative.y {
             Zero => widget.state.inner_top(),
             Center => (widget.state.inner_top() + widget.state.inner_bottom() - size.height) / 2,
             Max => widget.state.inner_bottom() - size.height,
             Custom => child.state.position().y,
-            Mouse => cmp::min(Cursor::get_y(), Config::ui_height() - size.height),
+            Mouse => Cursor::get_y().min(Config::ui_height() - size.height),
         };
 
         child
@@ -181,10 +180,10 @@ impl LayoutKind {
             Max => height += parent_inner_height,
             ChildMax => {
                 for child in widget.children.iter() {
-                    height = cmp::max(
-                        height,
-                        LayoutKind::height_recursive(&child.borrow(), parent_inner_height),
-                    );
+                    height = height.max(LayoutKind::height_recursive(
+                        &child.borrow(),
+                        parent_inner_height,
+                    ));
                 }
                 height += theme.border.vertical()
             }
@@ -214,10 +213,10 @@ impl LayoutKind {
             Max => width += parent_inner_width,
             ChildMax => {
                 for child in widget.children.iter() {
-                    width = cmp::max(
-                        width,
-                        LayoutKind::width_recursive(&child.borrow(), parent_inner_width),
-                    );
+                    width = width.max(LayoutKind::width_recursive(
+                        &child.borrow(),
+                        parent_inner_width,
+                    ));
                 }
                 width += theme.border.horizontal()
             }

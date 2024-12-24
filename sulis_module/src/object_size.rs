@@ -59,13 +59,10 @@ impl ObjectSize {
 
         let sprite = ResourceSet::sprite(&builder.cursor_image)?;
 
-        let selection_image = match ResourceSet::image(&builder.selection_image) {
-            None => {
-                warn!("Unable to locate image '{}'", builder.selection_image);
-                return unable_to_create_error("object_size", &builder.id);
-            }
-            Some(img) => img,
-        };
+        let selection_image = ResourceSet::image(&builder.selection_image).ok_or_else(|| {
+            warn!("Unable to locate image '{}'", builder.selection_image);
+            unable_to_create_error("object_size", &builder.id)
+        })?;
 
         let diagonal = (((width * width) + (height * height)) as f32).sqrt();
 

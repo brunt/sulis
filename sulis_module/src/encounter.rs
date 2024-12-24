@@ -47,7 +47,7 @@ impl Encounter {
     pub fn new(builder: EncounterBuilder, module: &Module) -> Result<Encounter, Error> {
         if builder.entries.is_empty() {
             warn!("Cannot have an encounter with no entries");
-            return unable_to_create_error("encounter", &builder.id);
+            return Err(unable_to_create_error("encounter", &builder.id));
         }
 
         let mut ids = HashSet::new();
@@ -58,28 +58,24 @@ impl Encounter {
             if !entry.always {
                 if ids.contains(&entry.id) {
                     warn!("Duplicate entry '{}'", entry.id);
-                    return unable_to_create_error("encounter", &builder.id);
+                    return Err(unable_to_create_error("encounter", &builder.id));
                 }
 
                 ids.insert(entry.id.to_string());
             }
-
-            let actor = match module.actors.get(&entry.id) {
-                None => {
-                    warn!("no actor '{}' found", entry.id);
-                    return unable_to_create_error("encounter", &builder.id);
-                }
-                Some(actor) => Rc::clone(actor),
-            };
+            let actor = module.actors.get(&entry.id).ok_or_else(|| {
+                warn!("no actor '{}' found", entry.id);
+                unable_to_create_error("encounter", &builder.id)
+            }).map(Rc::clone)?;
 
             if entry.always && entry.limit.is_some() {
                 warn!("Cannot set a limit on an always generated entry.");
-                return unable_to_create_error("encounter", &builder.id);
+                return Err(unable_to_create_error("encounter", &builder.id));
             }
 
             if entry.always && entry.weight > 0 {
                 warn!("Cannot set a weight on an always generated entry.");
-                return unable_to_create_error("encounter", &builder.id);
+                return Err(unable_to_create_error("encounter", &builder.id));
             }
 
             total_weight += entry.weight;

@@ -160,8 +160,7 @@ fn attack_internal(
 ) -> (HitKind, HitFlags, Vec<(DamageKind, u32)>) {
     let rules = Module::rules();
 
-    let concealment = std::cmp::max(
-        0,
+    let concealment = 0.max(
         target.borrow().actor.stats.concealment - parent.borrow().actor.stats.concealment_ignore,
     );
 

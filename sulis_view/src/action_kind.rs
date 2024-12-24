@@ -15,7 +15,6 @@
 //  along with Sulis.  If not, see <http://www.gnu.org/licenses/>
 
 use std::cell::RefCell;
-use std::cmp;
 use std::rc::Rc;
 
 use crate::RootView;
@@ -107,20 +106,19 @@ impl ActionHoverInfo {
         base: Option<ActionHoverInfo>,
         append: Option<ActionHoverInfo>,
     ) -> Option<ActionHoverInfo> {
-        match base {
-            None => append,
-            Some(mut base) => {
-                if let Some(append) = append {
-                    base.total_ap = cmp::max(append.total_ap, base.total_ap);
-                    if base.ap + append.ap < base.total_ap {
-                        base.ap += append.ap;
-                    } else {
-                        base.ap = append.ap;
-                    }
-                    base.path = append.path;
-                }
+        match (base, append) {
+            (None, append) => append,
+            (Some(mut base), Some(append)) => {
+                base.total_ap = base.total_ap.max(append.total_ap);
+                base.ap = if base.ap + append.ap < base.total_ap {
+                    base.ap + append.ap
+                } else {
+                    append.ap
+                };
+                base.path = append.path;
                 Some(base)
             }
+            (base, None) => base,
         }
     }
 
@@ -760,7 +758,7 @@ impl MoveAction {
             } else {
                 pc.actor.ap() as i32
             };
-            let moves = cmp::min(path.len() as i32 - 1, total_ap / cost_per_move);
+            let moves = path.len() as i32 - 1.min(total_ap / cost_per_move);
             let ap = moves * cost_per_move;
 
             (

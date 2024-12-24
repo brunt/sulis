@@ -220,7 +220,7 @@ pub fn get_available_save_files() -> Result<Vec<SaveFileMetaData>, Error> {
         .collect::<Result<Vec<_>, _>>()?;
 
     let mut sorted_results = results;
-    sorted_results.sort_by(|f1, f2| time_modified(f2).cmp(&time_modified(f1)));
+    sorted_results.sort_by_key(|f2| std::cmp::Reverse(time_modified(f2)));
 
     Ok(sorted_results)
 }

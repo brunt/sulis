@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU General Public License
 //  along with Sulis.  If not, see <http://www.gnu.org/licenses/>
 
-use std::cmp::max;
 use std::collections::HashMap;
 use std::{
     fmt,
@@ -277,7 +276,7 @@ impl Rules {
             let resistance = (100 - resistance.amount(kind)) as f32 / 100.0;
             let amount = damage.roll() as f32 * multiplier * resistance;
 
-            let armor = max(0, armor.amount(kind) - damage.ap as i32) as u32;
+            let armor = 0.max(armor.amount(kind) - damage.ap as i32) as u32;
             let armor_max = self.armor_damage_reduction_cap(armor) as f32 * amount / 100.0;
             let armor = armor as f32;
 

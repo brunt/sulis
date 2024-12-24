@@ -140,13 +140,10 @@ impl TerrainTiles {
         all_kinds: &[TerrainKind],
     ) -> Result<TerrainTiles, Error> {
         let base_tile_id = format!("{}{}{}", rules.prefix, kind.id, rules.base_postfix);
-        let base = match Module::tile(&base_tile_id) {
-            None => {
+        let base = Module::tile(&base_tile_id).ok_or_else(|| {
                 warn!("Base tile for terrain kind '{}' not found", kind.id);
-                return unable_to_create_error("terrain_tiles", &kind.id);
-            }
-            Some(tile) => tile,
-        };
+                unable_to_create_error("terrain_tiles", &kind.id)
+            })?;
 
         let base_weight = match kind.base_weight {
             None => rules.base_weight,
