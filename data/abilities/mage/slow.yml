@@ -6,16 +6,17 @@ description: |
 active:
   script: "slow"
   group: "1st Circle"
-  ap: 2000
+  ap: 3000
   duration:
     Rounds: 3
   cooldown: 4
   combat_only: true
-  range: Visible
+  range:
+    Radius: 9.0
   ai:
     priority: 20
     kind: Debuff
-    group: Single
+    group: Multiple
     range: Short
   short_description: |
-    Reduce action points for one opponent with a Will check.
+    Reduce action points for opponents with a Will check.
