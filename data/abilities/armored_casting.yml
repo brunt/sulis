@@ -35,3 +35,70 @@ prereqs:
     druid: 3
     warlock: 3
     bard: 3
+upgrades:
+  - description: |
+      You are proficient in casting while wearing medium armor, able to ignore most of the penalties to spell accuracy while doing so.
+    bonuses:
+      - kind:
+          spell_accuracy: 5
+        when:
+          ArmorEquipped:
+            slot: Torso
+            kind: Medium
+      - kind:
+          spell_accuracy: 3
+        when:
+          ArmorEquipped:
+            slot: Legs
+            kind: Medium
+      - kind:
+          spell_accuracy: 8
+        when:
+          ArmorEquipped:
+            slot: Hands
+            kind: Medium
+      - kind:
+          spell_accuracy: 3
+        when:
+          ArmorEquipped:
+            slot: Head
+            kind: Medium
+      - kind:
+          spell_accuracy: 3
+        when:
+          ArmorEquipped:
+            slot: Feet
+            kind: Medium
+  - description: |
+      You are proficient in casting while wearing heavy armor, able to ignore most of the penalties to spell accuracy while doing so.
+    bonuses:
+      - kind:
+          spell_accuracy: 10
+        when:
+          ArmorEquipped:
+            slot: Torso
+            kind: Heavy
+      - kind:
+          spell_accuracy: 5
+        when:
+          ArmorEquipped:
+            slot: Legs
+            kind: Heavy
+      - kind:
+          spell_accuracy: 10
+        when:
+          ArmorEquipped:
+            slot: Hands
+            kind: Heavy
+      - kind:
+          spell_accuracy: 5
+        when:
+          ArmorEquipped:
+            slot: Head
+            kind: Heavy
+      - kind:
+          spell_accuracy: 5
+        when:
+          ArmorEquipped:
+            slot: Feet
+            kind: Heavy

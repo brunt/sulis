@@ -1,13 +1,12 @@
 radius = 7.0
 
 function on_activate(parent, ability)
+  local stats = parent:stats()
   local targets = parent:targets():hostile()
   local targeter = parent:create_targeter(ability)
   targeter:set_free_select(ability:range())
-  --TODO: radius modifier
-  --local radius = ability:range() + parent:ability_level_from_id("louder_music") * 2
-  targeter:set_selection_radius(radius)
-  targeter:set_shape_circle(5.0)
+  targeter:set_selection_radius(radius + stats.caster_level / 2)
+  targeter:set_shape_circle(1.0 + stats.caster_level / 2)
   targeter:set_selection_visible()
   targeter:add_all_selectable(targets)
   targeter:add_all_effectable(targets)
